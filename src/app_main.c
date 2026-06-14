@@ -23,6 +23,7 @@
 #include "cast_session.h"
 #include "display.h"
 #include "knob.h"
+#include "fbdump.h"
 #include "ui.h"
 
 // Optional compiled-in Wi-Fi creds (include/secrets.h). If absent, the device
@@ -294,6 +295,7 @@ void app_main(void)
     touch_init(disp);
     knob_init();
     ui_init();
+    fbdump_start();   // `just shot` -> screen.png
 
     wifi_init();
 

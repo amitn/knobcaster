@@ -15,6 +15,10 @@ dependencies = [
     # `python -m pip` into this venv, so pip must be present. uv venvs omit it
     # by default — declare it explicitly.
     "pip>=24",
+    # Host tooling for `just shot` (serial framebuffer -> PNG).
+    "pyserial>=3.5",
+    "numpy>=1.26",
+    "pillow>=10",
 ]
 
 [tool.uv]

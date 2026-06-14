@@ -38,6 +38,8 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
 # --- LVGL: enable the QR code widget (Wi-Fi provisioning screen) ---
 CONFIG_LV_USE_QRCODE=y
+# --- LVGL: enable lv_snapshot (serial framebuffer dump, `just shot`) ---
+CONFIG_LV_USE_SNAPSHOT=y
 
 # --- Compiler ---
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y

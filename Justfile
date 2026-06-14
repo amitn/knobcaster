@@ -60,6 +60,11 @@ dev: build upload monitor
 ports:
     uv run pio device list
 
+# Capture the LCD framebuffer over serial to a PNG (default screen.png).
+# Sends 'S' to the firmware; needs the serial monitor closed.
+shot out="screen.png":
+    uv run python scripts/fbdump.py {{out}} {{ if PORT != "auto" { PORT } else { "" } }}
+
 # ----------------------------------------------------------------------------
 # Maintenance
 # ----------------------------------------------------------------------------
