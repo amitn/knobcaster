@@ -85,6 +85,27 @@ knob/touch ──intent──▶ ui_task ──CastCommand──▶ [queue] ─�
                           └────────AppState snapshot────────────┘
 ```
 
+A third small task, **`enc_task`** (in `bsp/knob.c`), polls the PCNT counter
+every ~4 ms to decode detents (one per departure from 0, anti-glitch). It feeds
+`ui_task` via `knob_take_delta()`.
+
+> ⚠️ A polling task **must** sleep a non-zero number of ticks. At
+> `FREERTOS_HZ=100`, `pdMS_TO_TICKS(4)` truncates to 0 and `vTaskDelay(0)` only
+> yields — `enc_task` then busy-spun on core 0, tripped the task watchdog, and
+> starved `net_task` (Wi-Fi/TLS crawled). Fixed by raising the tick to 1 kHz and
+> clamping the delay to ≥ 1 tick. Keep poll-loop tasks *below* the work they feed
+> in priority so a regression can't starve networking.
+
+### TODO — interrupt-driven encoder
+
+Replace `enc_task`'s poll loop with PCNT **watch-point** callbacks
+(`pcnt_unit_register_event_callbacks` + `pcnt_unit_add_watch_point`), so the
+encoder consumes zero idle CPU and wakes only on real counter changes. The
+anti-glitch "one detent per departure from 0" logic would move into the
+callback (which runs in ISR context — keep it minimal, just update `s_enc_accum`
+and signal). Deferred: the polling version works and is cheap at 1 kHz tick;
+this is a cleanliness/efficiency improvement, not a correctness fix.
+
 ## Wi-Fi provisioning (SoftAP + QR + web form)
 
 No credentials are compiled in by default. The boot sequence picks creds in this
