@@ -22,8 +22,9 @@ Cast protocol) before polishing UX.
 
 ## M2 — Network & discovery
 - [x] Wi-Fi connect from `secrets.h`, reconnect/backoff (`components/wifi`)
-- [ ] mDNS browse `_googlecast._tcp`; parse TXT (`fn`,`md`,`id`,`ca`)
-- [ ] Render discovered device list (no Cast connection yet)
+- [x] mDNS browse `_googlecast._tcp`; parse TXT (`fn`,`md`,`id`) → `cast_device_t[]`
+      (`components/cast/cast_discovery.c`); logs device list each scan
+- [ ] Render discovered device list on screen (needs M1 display)
 
 ## M3 — Cast read path  (reference: ESPCaster `chromecast_controller`)
 - [ ] TLS connect to `:8009` via `esp-tls` (`skip_common_name`)

@@ -15,6 +15,7 @@
 #include "nvs_flash.h"
 
 #include "wifi.h"
+#include "cast_discovery.h"
 
 // Wi-Fi credentials. Copy include/secrets.h.example -> include/secrets.h.
 #if defined(__has_include)
@@ -49,13 +50,30 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     wifi_start(WIFI_SSID, WIFI_PASS);
+    if (!wifi_wait_connected(30000)) {
+        ESP_LOGW(TAG, "Wi-Fi not up after 30s; will keep retrying in background");
+    }
 
-    // Heartbeat until the rest of the system (display, cast) comes online.
+    cast_discovery_init();
+
+    // Periodically discover Cast devices and log them. (Cast connection /
+    // now-playing / control and the LVGL UI come in later milestones.)
+    static cast_device_t devices[CAST_MAX_DEVICES];
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(5000));
-        ESP_LOGI(TAG, "heap=%" PRIu32 "B  psram_free=%dB  wifi=%s",
-                 esp_get_free_heap_size(),
-                 (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-                 wifi_is_connected() ? "up" : "down");
+        if (wifi_is_connected()) {
+            int n = cast_discovery_scan(devices, CAST_MAX_DEVICES, 3000);
+            ESP_LOGI(TAG, "discovered %d Cast device(s)  [heap=%" PRIu32 "B psram=%dB]",
+                     n, esp_get_free_heap_size(),
+                     (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+            for (int i = 0; i < n; i++) {
+                ESP_LOGI(TAG, "  [%d] %-24s %-20s " IPSTR ":%u%s",
+                         i, devices[i].friendly_name, devices[i].model,
+                         IP2STR(&devices[i].ip), devices[i].port,
+                         devices[i].is_group ? " (group)" : "");
+            }
+        } else {
+            ESP_LOGI(TAG, "Wi-Fi down, waiting to reconnect...");
+        }
+        vTaskDelay(pdMS_TO_TICKS(15000));
     }
 }
