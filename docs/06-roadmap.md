@@ -27,12 +27,16 @@ Cast protocol) before polishing UX.
 - [ ] Render discovered device list on screen (needs M1 display)
 
 ## M3 — Cast read path  (reference: ESPCaster `chromecast_controller`)
-- [ ] TLS connect to `:8009` via `esp-tls` (`skip_common_name`)
-- [ ] CASTV2 framing + minimal `CastMessage` protobuf encode/decode
-- [ ] Handshake: CONNECT + PING + GET_STATUS
-- [ ] Parse RECEIVER_STATUS → volume + app transportId
+- [x] TLS connect to `:8009` via `esp-tls` (`skip_common_name`) — `cast_connection.c`
+- [x] CASTV2 framing + minimal `CastMessage` protobuf encode/decode — `cast_proto.c`
+- [x] Handshake probe: CONNECT + GET_STATUS, log raw replies (`probe_device`)
+- [ ] PING/PONG keepalive
+- [ ] Parse RECEIVER_STATUS → volume + app transportId (cJSON)
 - [ ] Media CONNECT + GET_STATUS → now-playing + mediaSessionId
 - [ ] Live status updates reduce into `AppState`; show now-playing on screen
+
+> Builds clean; **untested on hardware/real Cast device** — the probe path needs
+> on-device validation (TLS handshake, framing, actual payloads).
 
 ## M4 — Cast control path
 - [ ] SET_VOLUME from knob with debounce + reconcile

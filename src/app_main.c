@@ -16,6 +16,7 @@
 
 #include "wifi.h"
 #include "cast_discovery.h"
+#include "cast_connection.h"
 
 // Wi-Fi credentials. Copy include/secrets.h.example -> include/secrets.h.
 #if defined(__has_include)
@@ -28,6 +29,31 @@
 #endif
 
 static const char *TAG = "app";
+
+// One-shot probe: open a CASTV2 connection, do the connection handshake, ask
+// for receiver status, and log whatever the device sends back. Proves the TLS +
+// framing + protobuf pipe end-to-end. Full session/parse comes in M3 part 2.
+static void probe_device(const cast_device_t *dev)
+{
+    ESP_LOGI(TAG, "probing %s (" IPSTR ":%u)...",
+             dev->friendly_name, IP2STR(&dev->ip), dev->port);
+
+    cast_conn_t *c = cast_conn_open(dev->ip, dev->port ? dev->port : CAST_PORT);
+    if (!c) { ESP_LOGW(TAG, "connect failed"); return; }
+
+    cast_conn_send(c, CAST_SRC_DEFAULT, CAST_DST_RECEIVER,
+                   CAST_NS_CONNECTION, "{\"type\":\"CONNECT\"}");
+    cast_conn_send(c, CAST_SRC_DEFAULT, CAST_DST_RECEIVER,
+                   CAST_NS_RECEIVER, "{\"type\":\"GET_STATUS\",\"requestId\":1}");
+
+    for (int i = 0; i < 6; i++) {
+        cast_msg_t msg;
+        if (!cast_conn_recv(c, &msg, 4000)) break;
+        ESP_LOGI(TAG, "  <- ns=%s  payload=%.*s", msg.ns,
+                 (int)msg.payload_len, msg.payload ? (const char *)msg.payload : "");
+    }
+    cast_conn_close(c);
+}
 
 static void init_nvs(void)
 {
@@ -59,6 +85,7 @@ void app_main(void)
     // Periodically discover Cast devices and log them. (Cast connection /
     // now-playing / control and the LVGL UI come in later milestones.)
     static cast_device_t devices[CAST_MAX_DEVICES];
+    bool probed = false;
     for (;;) {
         if (wifi_is_connected()) {
             int n = cast_discovery_scan(devices, CAST_MAX_DEVICES, 3000);
@@ -70,6 +97,11 @@ void app_main(void)
                          i, devices[i].friendly_name, devices[i].model,
                          IP2STR(&devices[i].ip), devices[i].port,
                          devices[i].is_group ? " (group)" : "");
+            }
+            // One-shot connection probe against the first device found.
+            if (n > 0 && !probed) {
+                probed = true;
+                probe_device(&devices[0]);
             }
         } else {
             ESP_LOGI(TAG, "Wi-Fi down, waiting to reconnect...");
