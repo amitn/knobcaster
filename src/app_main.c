@@ -69,10 +69,6 @@ typedef struct {
 } dev_cache_t;
 static dev_cache_t g_cache[CAST_MAX_DEVICES];
 
-// Dial mode: the knob either sets volume or picks the active speaker.
-typedef enum { DIAL_VOLUME = 0, DIAL_SPEAKERS } dial_mode_t;
-static dial_mode_t g_dial_mode;
-static int         g_sel_preview;   // previewed device index while in DIAL_SPEAKERS
 
 typedef enum {
     SESSION_CLOSED    = 0,  // connection dropped -> rescan
@@ -109,9 +105,6 @@ static session_result_t run_session(void)
         return SESSION_CLOSED;
     }
 
-    g_dial_mode = DIAL_VOLUME;          // each session starts in Volume mode
-    ui_set_dial_mode(false);
-
     int64_t last_log = 0;
     for (;;) {
         if (!cast_session_poll(s, 100)) {
@@ -138,37 +131,18 @@ static session_result_t run_session(void)
             }
         }
 
-        // Knob short press -> toggle dial mode (Volume <-> Speakers). Leaving
-        // Speakers mode commits the previewed device (reopens its session).
-        if (knob_take_pressed()) {
-            if (g_dial_mode == DIAL_VOLUME) {
-                g_dial_mode = DIAL_SPEAKERS;
-                g_sel_preview = g_active;
-                ui_set_dial_mode(true);
-                ui_set_now_playing(g_devices[g_sel_preview].friendly_name, "select speaker", "", -1);
-            } else {
-                g_dial_mode = DIAL_VOLUME;
-                ui_set_dial_mode(false);
-                if (g_sel_preview != g_active) {
-                    g_active = g_sel_preview;
-                    ESP_LOGI(TAG, "speaker picked -> %s", g_devices[g_active].friendly_name);
-                    cast_session_close(s);
-                    return SESSION_SWITCHED;
-                }
-            }
+        // Knob press -> open the device list (navigate it with the dial).
+        if (knob_take_pressed() && g_count > 1) {
+            cast_session_close(s);
+            return SESSION_OPEN_LIST;
         }
 
-        // Knob rotation -> volume (Volume mode) or speaker preview (Speakers mode).
+        // Knob rotation -> volume (optimistic; arc follows immediately).
         int detents = knob_take_delta();
         if (detents != 0) {
-            if (g_dial_mode == DIAL_VOLUME) {
-                cast_session_step_volume(s, detents * 0.03f);  // ~3% per detent
-                cast_volume_status_t v; cast_session_get_volume(s, &v);
-                ui_set_now_playing(NULL, NULL, NULL, (int)(v.level * 100 + 0.5f));
-            } else if (g_count > 0) {
-                g_sel_preview = ((g_sel_preview + detents) % g_count + g_count) % g_count;
-                ui_set_now_playing(g_devices[g_sel_preview].friendly_name, "select speaker", "", -1);
-            }
+            cast_session_step_volume(s, detents * 0.03f);  // ~3% per detent
+            cast_volume_status_t v; cast_session_get_volume(s, &v);
+            ui_set_now_playing(NULL, NULL, NULL, (int)(v.level * 100 + 0.5f));
         }
         // Knob long press -> mute toggle.
         if (knob_take_long_pressed()) {
@@ -194,55 +168,34 @@ static session_result_t run_session(void)
                      m.app_name[0] ? m.app_name : "-",
                      player_state_str(m.state),
                      m.title, m.subtitle, vol_pct, v.muted ? " (muted)" : "");
-            // Don't clobber the speaker-preview labels while picking.
-            if (g_dial_mode == DIAL_VOLUME) {
-                ui_set_now_playing(dev->friendly_name,
-                                   m.title[0] ? m.title : player_state_str(m.state),
-                                   m.subtitle, vol_pct);
-                ui_set_muted(v.muted);
-                ui_set_playing(m.state == CAST_PLAYER_PLAYING);
-                ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
-            }
+            ui_set_now_playing(dev->friendly_name,
+                               m.title[0] ? m.title : player_state_str(m.state),
+                               m.subtitle, vol_pct);
+            ui_set_muted(v.muted);
+            ui_set_playing(m.state == CAST_PLAYER_PLAYING);
+            ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
             ui_set_wifi(true);
             cache_set(g_active, &m, &v);
         }
     }
 }
 
-// Briefly connect to a device to populate its cached state for the list.
-static void cache_refresh(int idx)
-{
-    cast_session_t *s = cast_session_open(&g_devices[idx]);
-    if (!s) { g_cache[idx].valid = false; return; }
-    int64_t t0 = esp_timer_get_time();
-    while (esp_timer_get_time() - t0 < 800000) {   // ~0.8s to receive status
-        if (!cast_session_poll(s, 200)) break;
-    }
-    cast_media_status_t m;  cast_session_get_media(s, &m);
-    cast_volume_status_t v; cast_session_get_volume(s, &v);
-    cache_set(idx, &m, &v);
-    cast_session_close(s);
-}
-
 // Modal device-list overlay. Returns the chosen device index, or -1 to keep the
 // current one. Knob rotates the highlight / press selects; tap a row to select;
-// tap the background or wait 12 s to cancel.
+// tap the background or wait 12 s to cancel. Opens instantly (no per-device
+// connect) — shows names + cached state where known.
 static int device_list_overlay(void)
 {
-    // Populate any devices we haven't cached yet (active stays live-cached).
-    for (int i = 0; i < g_count; i++) {
-        if (i == g_active || g_cache[i].valid) continue;
-        ui_set_now_playing(NULL, "scanning...", g_devices[i].friendly_name, -1);
-        cache_refresh(i);
-    }
-
-    static char buf[CAST_MAX_DEVICES][64];
+    static char buf[CAST_MAX_DEVICES][96];
     const char *labels[CAST_MAX_DEVICES];
     for (int i = 0; i < g_count; i++) {
         const dev_cache_t *c = &g_cache[i];
-        const char *st = c->valid ? player_state_str(c->state) : "-";
-        snprintf(buf[i], sizeof(buf[i]), "%s  %s  %d%%",
-                 g_devices[i].friendly_name, st, c->valid ? c->vol_pct : 0);
+        const char *mark = (i == g_active) ? "> " : "";
+        if (c->valid)
+            snprintf(buf[i], sizeof(buf[i]), "%s%s  %s %d%%",
+                     mark, g_devices[i].friendly_name, player_state_str(c->state), c->vol_pct);
+        else
+            snprintf(buf[i], sizeof(buf[i]), "%s%s", mark, g_devices[i].friendly_name);
         labels[i] = buf[i];
     }
 

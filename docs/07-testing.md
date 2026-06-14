@@ -87,7 +87,22 @@ downstream logic runs unchanged.
 - [ ] Emulate touch: swipe left/right (device switch), tap-center (list),
       transport buttons (prev/play/next), tap a list row
 - [ ] A `just emit <keys>` recipe (send a command sequence over serial)
-- [ ] Scripted UI smoke test: emit input + screenshot + assert pixels/log
+
+## Physical UI test (agent-verifiable)
+
+`just uitest` (`scripts/uitest.py`) is a **scripted on-device smoke test**: it
+drives the UI through the serial debug console and captures a screenshot after
+each step into `uitest_shots/`, alongside `EXPECTATIONS.md` describing what each
+shot **should** show. A reviewer — a human, or an agent that can read images —
+then opens each PNG and checks it against its `EXPECT` line.
+
+Steps covered: now-playing → press opens the device list → dial navigates down/up
+→ press selects → volume up → volume down. (`fbdump` captures the top layer when
+an overlay is up, so the list/QR screens are visible too.)
+
+Extend by adding `(name, keys, expectation)` tuples to `STEPS` in `uitest.py`.
+This is the manual/visual counterpart to the host unit tests below — it needs the
+board, but verifies the real rendered UI end-to-end.
 
 ## Native unit tests
 

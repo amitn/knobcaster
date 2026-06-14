@@ -77,11 +77,10 @@ Cast protocol) before polishing UX.
 - [ ] `cast trace` (`-DCAST_TRACE`) + `just trace`; capture fixtures on hardware
 - [ ] `cast_status` fixture tests; wire into CI
 
-## Dial mode toggle (UX) — done
-- [x] Knob **press toggles dial mode**: Volume (dial = volume) ⇄ Speakers (dial =
-      pick active speaker, commit on press-back). Play/pause moved to the
-      on-screen transport button; long-press = mute. Hint + highlighted device
-      name indicate the mode. (`run_session`, `ui_set_dial_mode`) — built
+## Speaker selection (UX) — done
+- [x] Knob **press → device list** (opens instantly), **dial navigates**, press/tap
+      **selects**. Dial on now-playing = volume; long-press = mute; play/pause on
+      the on-screen transport button. (`run_session` → `device_list_overlay`)
 
 ## M6 — Polish & robustness
 - [ ] Haptics (DRV2605) on detents/press

@@ -84,3 +84,8 @@ check:
 # Run host-native unit tests (pure parsers; no hardware).
 test:
     uv run pio test -e native
+
+# Physical UI smoke test: drive the device over serial, screenshot each step into
+# uitest_shots/ + write EXPECTATIONS.md (an agent/human verifies the shots).
+uitest:
+    uv run python scripts/uitest.py {{ if PORT != "auto" { PORT } else { "" } }}

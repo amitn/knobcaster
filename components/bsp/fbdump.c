@@ -49,7 +49,11 @@ static void usj_write(const void *data, size_t len)
 static void dump_now(void)
 {
     lvgl_port_lock(0);
-    lv_draw_buf_t *snap = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB565);
+    // Capture the top layer when a modal overlay (device list, provisioning,
+    // members) is up; otherwise the active screen.
+    lv_obj_t *top = lv_layer_top();
+    lv_obj_t *target = (lv_obj_get_child_count(top) > 0) ? top : lv_screen_active();
+    lv_draw_buf_t *snap = lv_snapshot_take(target, LV_COLOR_FORMAT_RGB565);
     lvgl_port_unlock();
     if (!snap) { usj_write("\n--FBERR--\n", 11); return; }
 
