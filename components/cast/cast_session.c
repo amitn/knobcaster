@@ -8,7 +8,7 @@
 
 static const char *TAG = "cast.sess";
 
-#define PING_INTERVAL_US (5 * 1000000)
+#define PING_INTERVAL_US  (5 * 1000000)
 #define TRANSPORT_ID_LEN 48
 
 struct cast_session {
@@ -21,6 +21,7 @@ struct cast_session {
     cast_volume_status_t volume;
     bool         vol_dirty;       // local volume change awaiting flush
     int64_t      last_vol_send_us;
+    int64_t      last_media_req_us; // last media GET_STATUS (metadata refresh)
     bool         is_group;        // device is a Cast group
     cast_member_t members[CAST_MAX_MEMBERS];
     int          member_count;
@@ -42,16 +43,25 @@ static void send_get_status_multizone(cast_session_t *s)
     cast_conn_send(s->conn, CAST_SRC_DEFAULT, CAST_DST_RECEIVER, CAST_NS_MULTIZONE, p);
 }
 
+// Ask the media app for a full status (incl. metadata). Incremental MEDIA_STATUS
+// pushes on a track change often omit the `media` block, so we must re-pull it.
+static void send_get_status_media(cast_session_t *s)
+{
+    if (!s->transport_id[0]) return;
+    char p[64];
+    snprintf(p, sizeof(p), "{\"type\":\"GET_STATUS\",\"requestId\":%d}", ++s->req_id);
+    cast_conn_send(s->conn, CAST_SRC_DEFAULT, s->transport_id, CAST_NS_MEDIA, p);
+    s->last_media_req_us = esp_timer_get_time();
+}
+
 // Open a virtual connection to the running app and request its media status.
 static void connect_transport(cast_session_t *s, const char *transport_id)
 {
     strlcpy(s->transport_id, transport_id, sizeof(s->transport_id));
     cast_conn_send(s->conn, CAST_SRC_DEFAULT, s->transport_id,
                    CAST_NS_CONNECTION, "{\"type\":\"CONNECT\"}");
-    char p[64];
-    snprintf(p, sizeof(p), "{\"type\":\"GET_STATUS\",\"requestId\":%d}", ++s->req_id);
-    cast_conn_send(s->conn, CAST_SRC_DEFAULT, s->transport_id, CAST_NS_MEDIA, p);
     s->transport_connected = true;
+    send_get_status_media(s);
     ESP_LOGI(TAG, "connected to media transport %s", s->transport_id);
 }
 
@@ -102,6 +112,13 @@ static void dispatch(cast_session_t *s, const cast_msg_t *msg)
         if (cast_parse_receiver_status(json, len, &rs)) apply_receiver_status(s, &rs);
     } else if (!strcmp(msg->ns, CAST_NS_MEDIA)) {
         cast_parse_media_status(json, len, &s->media);
+        // Track changes broadcast a status that may omit the `media` block (just
+        // playerState/time). When that happens, pull the full status once so the
+        // title/artist refresh — rate-limited so a burst coalesces.
+        if (!s->media.has_media && s->media.state != CAST_PLAYER_IDLE) {
+            int64_t now = esp_timer_get_time();
+            if (now - s->last_media_req_us >= 500000) send_get_status_media(s);
+        }
     } else if (!strcmp(msg->ns, CAST_NS_MULTIZONE)) {
         cast_member_t tmp[CAST_MAX_MEMBERS];
         int n = cast_parse_multizone_status(json, len, tmp, CAST_MAX_MEMBERS);
@@ -232,8 +249,10 @@ static bool queue_jump(cast_session_t *s, int jump)
     snprintf(p, sizeof(p),
              "{\"type\":\"QUEUE_UPDATE\",\"mediaSessionId\":%d,\"jump\":%d,\"requestId\":%d}",
              s->media.media_session_id, jump, ++s->req_id);
-    return cast_conn_send(s->conn, CAST_SRC_DEFAULT, s->transport_id,
-                          CAST_NS_MEDIA, p);
+    bool ok = cast_conn_send(s->conn, CAST_SRC_DEFAULT, s->transport_id,
+                             CAST_NS_MEDIA, p);
+    if (ok) send_get_status_media(s);   // pull the new track's metadata promptly
+    return ok;
 }
 
 bool cast_session_play(cast_session_t *s)  { return media_cmd(s, "PLAY"); }

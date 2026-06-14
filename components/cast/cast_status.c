@@ -122,6 +122,7 @@ bool cast_parse_media_status(const char *json, size_t len, cast_media_status_t *
 
     cJSON *media = cJSON_GetObjectItemCaseSensitive(st, "media");
     cJSON *meta  = media ? cJSON_GetObjectItemCaseSensitive(media, "metadata") : NULL;
+    inout->has_media = (meta != NULL);
     if (meta) {
         copy_str_field(meta, "title", inout->title, sizeof(inout->title));
         const char *artist = str_field(meta, "artist");   // prefer artist, else subtitle

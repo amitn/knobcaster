@@ -33,6 +33,7 @@ typedef struct {
     bool supports_next;
     bool supports_prev;
     bool supports_seek;
+    bool has_media;         // this status carried a media/metadata block
 } cast_media_status_t;
 
 typedef struct {
