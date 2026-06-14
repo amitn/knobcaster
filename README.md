@@ -1,5 +1,9 @@
 # ESP32-S3 Cast Knob
 
+> A desk knob that controls every Google Cast / Chromecast speaker on your Wi-Fi —
+> turn for volume, press to pick a speaker, with now-playing, album art, and
+> transport on a round touchscreen. ESP32-S3 + ESP-IDF + LVGL.
+
 A physical volume/transport controller for **Google Cast (Chromecast) speakers**,
 built on the [Waveshare ESP32-S3-Knob-Touch-LCD-1.8](https://www.waveshare.com/wiki/ESP32-S3-Knob-Touch-LCD-1.8).
 
