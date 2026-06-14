@@ -25,3 +25,6 @@ src/secrets.h
 
 # Local reference clones (BSPs / analog projects) — never committed
 refs/
+
+# Screenshot artifacts from `just shot`
+screen*.png
