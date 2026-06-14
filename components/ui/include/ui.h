@@ -3,6 +3,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +19,10 @@ void ui_set_now_playing(const char *device, const char *title,
 
 // Reflect mute state on the volume arc (red when muted). Thread-safe.
 void ui_set_muted(bool muted);
+
+// Set the volume-arc color (0xRRGGBB) for the active device — each speaker gets
+// a unique, stable color. Applies immediately unless currently muted (red).
+void ui_set_volume_color(uint32_t rgb);
 
 // Wi-Fi status indicator (top of the now-playing screen): green/white when
 // connected, dim red when not.

@@ -16,6 +16,11 @@ static lv_obj_t *s_wifi_lbl;   // Wi-Fi status icon (top)
 static lv_obj_t *s_prev_btn, *s_play_btn, *s_next_btn;
 static lv_obj_t *s_play_lbl;   // label inside the play/pause button
 
+// Per-device volume-arc color (set by ui_set_volume_color). Mute overrides it
+// with red; unmuting restores this. Default blue until a device is selected.
+static uint32_t s_vol_color = 0x1E88E5;
+static bool     s_muted;
+
 static volatile ui_transport_t s_transport;
 
 static void transport_cb(lv_event_t *e)
@@ -88,7 +93,7 @@ void ui_init(void)
     lv_arc_set_value(s_vol_arc, 0);
     lv_obj_remove_style(s_vol_arc, NULL, LV_PART_KNOB);
     lv_obj_clear_flag(s_vol_arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_color(s_vol_arc, lv_color_hex(0x1E88E5), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(s_vol_arc, lv_color_hex(s_vol_color), LV_PART_INDICATOR);
 
     // Wi-Fi status icon (very top).
     s_wifi_lbl = lv_label_create(scr);
@@ -152,9 +157,19 @@ void ui_set_now_playing(const char *device, const char *title,
 void ui_set_muted(bool muted)
 {
     lvgl_port_lock(0);
+    s_muted = muted;
     lv_obj_set_style_arc_color(s_vol_arc,
-        muted ? lv_color_hex(0xCC3333) : lv_color_hex(0x1E88E5),
+        muted ? lv_color_hex(0xCC3333) : lv_color_hex(s_vol_color),
         LV_PART_INDICATOR);
+    lvgl_port_unlock();
+}
+
+void ui_set_volume_color(uint32_t rgb)
+{
+    lvgl_port_lock(0);
+    s_vol_color = rgb;
+    if (!s_muted)   // muted shows red; apply the device color only when unmuted
+        lv_obj_set_style_arc_color(s_vol_arc, lv_color_hex(rgb), LV_PART_INDICATOR);
     lvgl_port_unlock();
 }
 
