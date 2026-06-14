@@ -98,11 +98,6 @@ static void cmd_send(cmd_kind_t kind, int arg)
     if (g_cmd_q) xQueueSend(g_cmd_q, &c, 0);
 }
 
-typedef enum {
-    SESSION_CLOSED    = 0,  // connection dropped -> rescan
-    SESSION_SWITCHED  = 1,  // user picked a different device -> reopen
-} session_result_t;
-
 static void cache_set(int idx, const cast_media_status_t *m, const cast_volume_status_t *v)
 {
     if (idx < 0 || idx >= CAST_MAX_DEVICES) return;
@@ -112,90 +107,88 @@ static void cache_set(int idx, const cast_media_status_t *m, const cast_volume_s
     strlcpy(g_cache[idx].title, m->title, sizeof(g_cache[idx].title));
 }
 
-// [net task] Open a session to the active device, apply queued UI commands, and
-// render now-playing. Returns SESSION_SWITCHED if the user picked another device
-// (g_active already updated — reopen) or SESSION_CLOSED if the connection dropped.
-static session_result_t run_session(void)
+// --- warm session pool ------------------------------------------------------
+// Keep recently-used speakers connected so switching back is instant. Every
+// pooled session is polled (PING keepalive); the active one is polled more and
+// receives commands.
+#define POOL_SIZE 3
+typedef struct {
+    cast_session_t *s;
+    char            id[CAST_ID_LEN];
+    int64_t         last_used;
+} warm_t;
+static warm_t g_pool[POOL_SIZE];
+
+static warm_t *pool_find(const char *id)
 {
+    if (!id || !id[0]) return NULL;
+    for (int i = 0; i < POOL_SIZE; i++)
+        if (g_pool[i].s && strcmp(g_pool[i].id, id) == 0) return &g_pool[i];
+    return NULL;
+}
+
+static void pool_close(warm_t *e)
+{
+    if (e->s) cast_session_close(e->s);
+    e->s = NULL; e->id[0] = '\0';
+}
+
+// Return the session for dev, opening it (blocking TLS connect) if not already
+// warm; evicts the least-recently-used entry when full. NULL on connect failure.
+static warm_t *pool_get(const cast_device_t *dev)
+{
+    warm_t *e = pool_find(dev->id);
+    if (e) { e->last_used = esp_timer_get_time(); return e; }
+
+    cast_session_t *s = cast_session_open(dev);
+    if (!s) return NULL;
+
+    e = &g_pool[0];
+    for (int i = 0; i < POOL_SIZE; i++) {
+        if (!g_pool[i].s)                        { e = &g_pool[i]; break; }
+        if (g_pool[i].last_used < e->last_used)    e = &g_pool[i];
+    }
+    pool_close(e);   // evict LRU if the chosen slot was in use
+    e->s = s;
+    strlcpy(e->id, dev->id, sizeof(e->id));
+    e->last_used = esp_timer_get_time();
+    ESP_LOGI(TAG, "connected %s (pool)", dev->friendly_name);
+    return e;
+}
+
+// Index of a device id in g_devices (-1 if gone). Caller holds g_state_mtx.
+static int dev_index_of_locked(const char *id)
+{
+    for (int i = 0; i < g_count; i++)
+        if (strcmp(g_devices[i].id, id) == 0) return i;
+    return -1;
+}
+
+// Update the list cache from a session; for the active one also render the screen.
+static void render_session(warm_t *e, bool active)
+{
+    cast_media_status_t m;  cast_session_get_media(e->s, &m);
+    cast_volume_status_t v; cast_session_get_volume(e->s, &v);
+
     state_lock();
-    int active = g_active;
-    cast_device_t dev = g_devices[active];
+    int idx = dev_index_of_locked(e->id);
+    if (idx >= 0) cache_set(idx, &m, &v);
+    char name[CAST_NAME_LEN] = {0};
+    if (active && idx >= 0) strlcpy(name, g_devices[idx].friendly_name, sizeof(name));
     state_unlock();
+    if (!active) return;
 
-    ESP_LOGI(TAG, "session -> [%d/%d] %s (" IPSTR ")", active + 1, g_count,
-             dev.friendly_name, IP2STR(&dev.ip));
-    ui_set_now_playing(dev.friendly_name, "connecting...", "", -1);
-
-    cast_session_t *s = cast_session_open(&dev);
-    if (!s) {
-        ESP_LOGW(TAG, "session open failed");
-        vTaskDelay(pdMS_TO_TICKS(300));
-        return SESSION_CLOSED;
-    }
-
-    int64_t last_log = 0;
-    for (;;) {
-        if (!cast_session_poll(s, 30)) {
-            ESP_LOGW(TAG, "session closed");
-            cast_session_close(s);
-            return SESSION_CLOSED;
-        }
-
-        // Apply commands from the UI task.
-        cmd_t c;
-        while (xQueueReceive(g_cmd_q, &c, 0)) {
-            switch (c.kind) {
-            case CMD_VOL:
-                cast_session_step_volume(s, c.arg * 0.03f);
-                break;
-            case CMD_MUTE: {
-                cast_volume_status_t v; cast_session_get_volume(s, &v);
-                cast_session_set_muted(s, !v.muted);
-                break;
-            }
-            case CMD_TRANSPORT:
-                if (c.arg == UI_TRANSPORT_PREV)            cast_session_prev(s);
-                else if (c.arg == UI_TRANSPORT_NEXT)       cast_session_next(s);
-                else if (c.arg == UI_TRANSPORT_PLAYPAUSE)  cast_session_toggle_pause(s);
-                break;
-            case CMD_SWIPE: {
-                state_lock();
-                g_active = (g_active + c.arg + g_count) % g_count;
-                state_unlock();
-                cast_session_close(s);
-                return SESSION_SWITCHED;
-            }
-            case CMD_SELECT: {
-                state_lock();
-                bool diff = (c.arg != g_active && c.arg >= 0 && c.arg < g_count);
-                if (diff) g_active = c.arg;
-                state_unlock();
-                if (diff) { cast_session_close(s); return SESSION_SWITCHED; }
-                break;
-            }
-            }
-        }
-
-        int64_t now = esp_timer_get_time();
-        if (now - last_log >= 1000000) {  // refresh log + screen every ~1s
-            last_log = now;
-            cast_media_status_t m;  cast_session_get_media(s, &m);
-            cast_volume_status_t v; cast_session_get_volume(s, &v);
-            int vol_pct = (int)(v.level * 100 + 0.5f);
-            g_volume_pct = vol_pct;
-            ESP_LOGI(TAG, "[%s] %-8s  \"%s\" - \"%s\"  vol=%d%%%s",
-                     m.app_name[0] ? m.app_name : "-", player_state_str(m.state),
-                     m.title, m.subtitle, vol_pct, v.muted ? " (muted)" : "");
-            ui_set_now_playing(dev.friendly_name,
-                               m.title[0] ? m.title : player_state_str(m.state),
-                               m.subtitle, vol_pct);
-            ui_set_muted(v.muted);
-            ui_set_playing(m.state == CAST_PLAYER_PLAYING);
-            ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
-            ui_set_wifi(true);
-            state_lock(); cache_set(active, &m, &v); state_unlock();
-        }
-    }
+    int vol_pct = (int)(v.level * 100 + 0.5f);
+    g_volume_pct = vol_pct;
+    ESP_LOGI(TAG, "[%s] %-8s  \"%s\" - \"%s\"  vol=%d%%%s",
+             m.app_name[0] ? m.app_name : "-", player_state_str(m.state),
+             m.title, m.subtitle, vol_pct, v.muted ? " (muted)" : "");
+    ui_set_now_playing(name, m.title[0] ? m.title : player_state_str(m.state),
+                       m.subtitle, vol_pct);
+    ui_set_muted(v.muted);
+    ui_set_playing(m.state == CAST_PLAYER_PLAYING);
+    ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
+    ui_set_wifi(true);
 }
 
 // [UI task] Modal device-list overlay. Snapshots the device list, shows it, and
@@ -369,6 +362,9 @@ void app_main(void)
 
     cast_discovery_init();
 
+    int64_t last_discover = 0, last_render = 0;
+    char    cur_id[CAST_ID_LEN] = {0};   // device we're currently rendering
+
     for (;;) {
         if (!wifi_is_connected()) {
             ESP_LOGI(TAG, "Wi-Fi down, waiting to reconnect...");
@@ -378,49 +374,116 @@ void app_main(void)
                 run_provisioning();         // persistent failure -> portal
             }
             ui_set_wifi(true);
+            for (int i = 0; i < POOL_SIZE; i++) pool_close(&g_pool[i]);  // stale sockets
+            last_discover = 0;
+            cur_id[0] = '\0';
             continue;
         }
 
-        static cast_device_t scan[CAST_MAX_DEVICES];
-        int n = cast_discovery_scan(scan, CAST_MAX_DEVICES, 3000);
-        qsort(scan, n, sizeof(scan[0]), dev_name_cmp);   // stable A-Z order
-        ESP_LOGI(TAG, "discovered %d Cast device(s)  [heap=%" PRIu32 "B psram=%dB]",
-                 n, esp_get_free_heap_size(),
-                 (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-        for (int i = 0; i < n; i++) {
-            ESP_LOGI(TAG, "  [%d] %-24s %-20s " IPSTR ":%u%s",
-                     i, scan[i].friendly_name, scan[i].model,
-                     IP2STR(&scan[i].ip), scan[i].port, scan[i].is_group ? " (group)" : "");
+        int64_t now = esp_timer_get_time();
+
+        // Periodic mDNS discovery (and on first run); the warm pool keeps the
+        // active session alive across rescans.
+        if (now - last_discover >= 30000000) {
+            last_discover = now;
+            static cast_device_t scan[CAST_MAX_DEVICES];
+            int n = cast_discovery_scan(scan, CAST_MAX_DEVICES, 3000);
+            qsort(scan, n, sizeof(scan[0]), dev_name_cmp);   // stable A-Z order
+            ESP_LOGI(TAG, "discovered %d Cast device(s)  [heap=%" PRIu32 "B psram=%dB]",
+                     n, esp_get_free_heap_size(),
+                     (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+            for (int i = 0; i < n; i++) {
+                ESP_LOGI(TAG, "  [%d] %-24s %-20s " IPSTR ":%u%s",
+                         i, scan[i].friendly_name, scan[i].model,
+                         IP2STR(&scan[i].ip), scan[i].port, scan[i].is_group ? " (group)" : "");
+            }
+            state_lock();
+            memcpy(g_devices, scan, sizeof(g_devices));
+            g_count = n;
+            memset(g_cache, 0, sizeof(g_cache));   // order may have changed
+            g_active = 0;                          // sticky selection by id
+            if (g_active_id[0]) {
+                for (int i = 0; i < n; i++)
+                    if (strcmp(g_devices[i].id, g_active_id) == 0) { g_active = i; break; }
+            }
+            state_unlock();
         }
 
-        // Publish the new list + sticky selection atomically for the UI task.
+        // Snapshot the active device under lock.
         state_lock();
-        memcpy(g_devices, scan, sizeof(g_devices));
-        g_count = n;
-        memset(g_cache, 0, sizeof(g_cache));   // device order may have changed
-        g_active = 0;
-        if (g_active_id[0]) {
-            for (int i = 0; i < n; i++) {
-                if (strcmp(g_devices[i].id, g_active_id) == 0) { g_active = i; break; }
+        int count = g_count;
+        cast_device_t dev = (count > 0) ? g_devices[g_active] : (cast_device_t){0};
+        state_unlock();
+
+        if (count == 0) {
+            ui_set_now_playing("Cast Knob", "no speakers found", "tap name: speakers", -1);
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+
+        // Switched device? Show "connecting..." only when it's not already warm.
+        if (strcmp(cur_id, dev.id) != 0) {
+            strlcpy(cur_id, dev.id, sizeof(cur_id));
+            if (!pool_find(dev.id))
+                ui_set_now_playing(dev.friendly_name, "connecting...", "", -1);
+            last_render = 0;                       // render as soon as it's live
+        }
+
+        // Get (or open) the active session. Warm -> instant; cold -> blocking TLS.
+        warm_t *act = pool_get(&dev);
+        if (!act) {
+            ESP_LOGW(TAG, "connect failed: %s", dev.friendly_name);
+            cur_id[0] = '\0';                      // allow a retry
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+        state_lock(); strlcpy(g_active_id, dev.id, sizeof(g_active_id)); state_unlock();
+
+        // Apply queued UI commands to the active session.
+        cmd_t c;
+        while (xQueueReceive(g_cmd_q, &c, 0)) {
+            switch (c.kind) {
+            case CMD_VOL:
+                cast_session_step_volume(act->s, c.arg * 0.03f);
+                break;
+            case CMD_MUTE: {
+                cast_volume_status_t v; cast_session_get_volume(act->s, &v);
+                cast_session_set_muted(act->s, !v.muted);
+                break;
+            }
+            case CMD_TRANSPORT:
+                if (c.arg == UI_TRANSPORT_PREV)            cast_session_prev(act->s);
+                else if (c.arg == UI_TRANSPORT_NEXT)       cast_session_next(act->s);
+                else if (c.arg == UI_TRANSPORT_PLAYPAUSE)  cast_session_toggle_pause(act->s);
+                break;
+            case CMD_SWIPE:
+                state_lock(); g_active = (g_active + c.arg + g_count) % g_count; state_unlock();
+                break;
+            case CMD_SELECT:
+                state_lock(); if (c.arg >= 0 && c.arg < g_count) g_active = c.arg; state_unlock();
+                break;
             }
         }
-        state_unlock();
 
-        if (n == 0) {
-            ui_set_now_playing("Cast Knob", "no speakers found", "tap name: speakers", -1);
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            continue;
+        // Poll every pooled session: active with a real timeout (drives media
+        // updates), the rest a quick keepalive. Drop any that die.
+        for (int i = 0; i < POOL_SIZE; i++) {
+            warm_t *e = &g_pool[i];
+            if (!e->s) continue;
+            bool is_active = (e == act);
+            if (!cast_session_poll(e->s, is_active ? 20 : 2)) {
+                ESP_LOGW(TAG, "session closed (%s)", e->id);
+                if (is_active) act = NULL;
+                pool_close(e);
+            }
         }
+        if (!act) { cur_id[0] = '\0'; continue; }  // active dropped -> reopen
 
-        // Run the active device; picking another device (list/swipe) reopens it
-        // immediately (no rescan). Only a dropped connection breaks out.
-        session_result_t r;
-        do {
-            r = run_session();
-        } while (r == SESSION_SWITCHED);
-        state_lock();
-        strlcpy(g_active_id, g_devices[g_active].id, sizeof(g_active_id));
-        state_unlock();
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        // Periodic refresh (~1s): render active, refresh list cache for all warm.
+        if (now - last_render >= 1000000) {
+            last_render = now;
+            for (int i = 0; i < POOL_SIZE; i++)
+                if (g_pool[i].s) render_session(&g_pool[i], &g_pool[i] == act);
+        }
     }
 }
