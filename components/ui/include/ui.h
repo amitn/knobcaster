@@ -23,6 +23,21 @@ void ui_set_muted(bool muted);
 // -1 = swipe right (previous device), 0 = none.
 int ui_take_swipe(void);
 
+// Consume a pending center tap on the now-playing screen (opens the device list).
+bool ui_take_center_tap(void);
+
+// --- device-list overlay -----------------------------------------------------
+// Show a modal list of devices (labels[0..count-1]) with `sel` highlighted.
+void ui_devlist_show(const char *const labels[], int count, int sel);
+// Move the highlight to row idx (and scroll it into view).
+void ui_devlist_set_sel(int idx);
+// Consume a tapped row index, or -1 if none.
+int  ui_devlist_take_tap(void);
+// Consume a background tap (dismiss request). Returns true once.
+bool ui_devlist_take_cancel(void);
+// Tear down the overlay.
+void ui_devlist_hide(void);
+
 #ifdef __cplusplus
 }
 #endif

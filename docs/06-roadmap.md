@@ -59,7 +59,9 @@ Cast protocol) before polishing UX.
 - [x] Switch active device via **swipe left/right** (LVGL gesture → `ui_take_swipe`;
       `run_session` reopens the new device without rescanning) — built
 - [x] Sticky selection: keep the chosen device active across rescans (match by id)
-- [ ] Device-list overlay (tap center) with cached per-device state
+- [x] Device-list overlay (tap center): modal list of all speakers with cached
+      per-device state (`g_cache`); knob/tap to pick, bg-tap/12s to dismiss
+      (`device_list_overlay` + `ui_devlist_*`) — built
 - [ ] Warm-session LRU for instant switching
 - [ ] Cast **group** handling (group vs member volume)
 - [ ] Album artwork: fetch `media.metadata.images[]`, decode JPEG → `lv_image` (stretch)

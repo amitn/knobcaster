@@ -52,7 +52,30 @@ static int           g_count;
 static int           g_active;
 static char          g_active_id[CAST_ID_LEN];  // sticky selection across rescans
 
-typedef enum { SESSION_CLOSED = 0, SESSION_SWITCHED = 1 } session_result_t;
+// Cached per-device state for the device-list overlay (parallel to g_devices;
+// cleared on each rescan). The active device's entry is kept live.
+typedef struct {
+    bool                valid;
+    cast_player_state_t state;
+    char                title[96];
+    int                 vol_pct;
+} dev_cache_t;
+static dev_cache_t g_cache[CAST_MAX_DEVICES];
+
+typedef enum {
+    SESSION_CLOSED    = 0,  // connection dropped -> rescan
+    SESSION_SWITCHED  = 1,  // user swiped -> reopen new active device
+    SESSION_OPEN_LIST = 2,  // user tapped center -> show device list
+} session_result_t;
+
+static void cache_set(int idx, const cast_media_status_t *m, const cast_volume_status_t *v)
+{
+    if (idx < 0 || idx >= CAST_MAX_DEVICES) return;
+    g_cache[idx].valid = true;
+    g_cache[idx].state = m->state;
+    g_cache[idx].vol_pct = (int)(v->level * 100 + 0.5f);
+    strlcpy(g_cache[idx].title, m->title, sizeof(g_cache[idx].title));
+}
 
 // Open a session to the active device and stream its now-playing to the screen,
 // handling knob (volume / play-pause) and swipe (switch device). Returns
@@ -88,6 +111,11 @@ static session_result_t run_session(void)
             cast_session_close(s);
             return SESSION_SWITCHED;
         }
+        // Center tap -> open the device-list overlay.
+        if (ui_take_center_tap() && g_count > 1) {
+            cast_session_close(s);
+            return SESSION_OPEN_LIST;
+        }
 
         // Knob rotation -> volume (optimistic; arc follows immediately).
         int detents = knob_take_delta();
@@ -121,8 +149,69 @@ static session_result_t run_session(void)
                                m.title[0] ? m.title : player_state_str(m.state),
                                m.subtitle, vol_pct);
             ui_set_muted(v.muted);
+            cache_set(g_active, &m, &v);
         }
     }
+}
+
+// Briefly connect to a device to populate its cached state for the list.
+static void cache_refresh(int idx)
+{
+    cast_session_t *s = cast_session_open(&g_devices[idx]);
+    if (!s) { g_cache[idx].valid = false; return; }
+    int64_t t0 = esp_timer_get_time();
+    while (esp_timer_get_time() - t0 < 800000) {   // ~0.8s to receive status
+        if (!cast_session_poll(s, 200)) break;
+    }
+    cast_media_status_t m;  cast_session_get_media(s, &m);
+    cast_volume_status_t v; cast_session_get_volume(s, &v);
+    cache_set(idx, &m, &v);
+    cast_session_close(s);
+}
+
+// Modal device-list overlay. Returns the chosen device index, or -1 to keep the
+// current one. Knob rotates the highlight / press selects; tap a row to select;
+// tap the background or wait 12 s to cancel.
+static int device_list_overlay(void)
+{
+    // Populate any devices we haven't cached yet (active stays live-cached).
+    for (int i = 0; i < g_count; i++) {
+        if (i == g_active || g_cache[i].valid) continue;
+        ui_set_now_playing(NULL, "scanning...", g_devices[i].friendly_name, -1);
+        cache_refresh(i);
+    }
+
+    static char buf[CAST_MAX_DEVICES][64];
+    const char *labels[CAST_MAX_DEVICES];
+    for (int i = 0; i < g_count; i++) {
+        const dev_cache_t *c = &g_cache[i];
+        const char *st = c->valid ? player_state_str(c->state) : "-";
+        snprintf(buf[i], sizeof(buf[i]), "%s  %s  %d%%",
+                 g_devices[i].friendly_name, st, c->valid ? c->vol_pct : 0);
+        labels[i] = buf[i];
+    }
+
+    int sel = g_active;
+    ui_devlist_show(labels, g_count, sel);
+
+    int chosen = -1;
+    int64_t t0 = esp_timer_get_time();
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(30));
+        int d = knob_take_delta();
+        if (d != 0) {
+            sel = ((sel + d) % g_count + g_count) % g_count;
+            ui_devlist_set_sel(sel);
+            t0 = esp_timer_get_time();
+        }
+        if (knob_take_pressed())          { chosen = sel; break; }
+        int tapped = ui_devlist_take_tap();
+        if (tapped >= 0)                  { chosen = tapped; break; }
+        if (ui_devlist_take_cancel())     { chosen = -1; break; }
+        if (esp_timer_get_time() - t0 > 12000000) { chosen = -1; break; }
+    }
+    ui_devlist_hide();
+    return chosen;
 }
 
 static void init_nvs(void)
@@ -177,6 +266,8 @@ void app_main(void)
                      g_devices[i].is_group ? " (group)" : "");
         }
 
+        memset(g_cache, 0, sizeof(g_cache));  // device order may have changed
+
         if (g_count == 0) {
             ui_set_now_playing("Cast Knob", "no speakers found", "swipe = device", -1);
             vTaskDelay(pdMS_TO_TICKS(5000));
@@ -192,11 +283,18 @@ void app_main(void)
             }
         }
 
-        // Run the active device; on swipe, reopen the newly-selected device
-        // immediately (no rescan). Only a dropped connection breaks out to rescan.
-        while (run_session() == SESSION_SWITCHED) {
-            /* g_active updated; reopen */
-        }
+        // Run the active device; swipe or device-list selection reopens the new
+        // active device immediately (no rescan). Only a dropped connection
+        // breaks out to rescan.
+        session_result_t r;
+        do {
+            r = run_session();
+            if (r == SESSION_OPEN_LIST) {
+                int chosen = device_list_overlay();
+                if (chosen >= 0) g_active = chosen;
+                r = SESSION_SWITCHED;  // reopen the (possibly new) active device
+            }
+        } while (r == SESSION_SWITCHED);
         strlcpy(g_active_id, g_devices[g_active].id, sizeof(g_active_id));
         vTaskDelay(pdMS_TO_TICKS(2000));
     }

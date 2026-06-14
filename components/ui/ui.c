@@ -14,6 +14,8 @@ static lv_obj_t *s_hint_lbl;
 
 // Pending swipe direction, consumed by ui_take_swipe().
 static volatile int s_swipe;
+// Pending center tap, consumed by ui_take_center_tap().
+static volatile bool s_center_tap;
 
 static void swipe_cb(lv_event_t *e)
 {
@@ -23,13 +25,24 @@ static void swipe_cb(lv_event_t *e)
     else if (dir == LV_DIR_RIGHT) s_swipe = -1;  // previous device
 }
 
+static void screen_click_cb(lv_event_t *e)
+{
+    (void)e;
+    lv_point_t p;
+    lv_indev_get_point(lv_indev_active(), &p);
+    int dx = (int)p.x - 180, dy = (int)p.y - 180;   // distance from center
+    if (dx * dx + dy * dy < 120 * 120) s_center_tap = true;
+}
+
 void ui_init(void)
 {
     lvgl_port_lock(0);
 
     lv_obj_t *scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+    lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(scr, swipe_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(scr, screen_click_cb, LV_EVENT_CLICKED, NULL);
 
     // Volume ring around the round display.
     s_vol_arc = lv_arc_create(scr);
@@ -101,4 +114,115 @@ int ui_take_swipe(void)
     int v = s_swipe;
     s_swipe = 0;
     return v;
+}
+
+bool ui_take_center_tap(void)
+{
+    bool v = s_center_tap;
+    s_center_tap = false;
+    return v;
+}
+
+// --- device-list overlay -----------------------------------------------------
+
+#define UI_MAX_ROWS 16
+
+static lv_obj_t     *s_overlay;
+static lv_obj_t     *s_rows[UI_MAX_ROWS];
+static int           s_row_count;
+static int           s_sel;
+static volatile int  s_tapped = -1;
+static volatile bool s_cancel;
+
+static void style_row(int i, bool sel)
+{
+    lv_obj_set_style_bg_color(s_rows[i],
+        sel ? lv_color_hex(0x1E88E5) : lv_color_hex(0x222222), 0);
+}
+
+static void row_cb(lv_event_t *e)
+{
+    s_tapped = (int)(intptr_t)lv_event_get_user_data(e);
+}
+
+static void overlay_bg_cb(lv_event_t *e)
+{
+    // Fires only for clicks on the overlay background (children don't bubble).
+    if (lv_event_get_target(e) == s_overlay) s_cancel = true;
+}
+
+void ui_devlist_show(const char *const labels[], int count, int sel)
+{
+    if (count > UI_MAX_ROWS) count = UI_MAX_ROWS;
+    lvgl_port_lock(0);
+
+    s_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(s_overlay, 360, 360);
+    lv_obj_center(s_overlay);
+    lv_obj_set_style_bg_color(s_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_overlay, 0, 0);
+    lv_obj_set_style_pad_all(s_overlay, 36, 0);
+    lv_obj_set_style_pad_row(s_overlay, 6, 0);
+    lv_obj_set_flex_flow(s_overlay, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(s_overlay, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(s_overlay, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_overlay, overlay_bg_cb, LV_EVENT_CLICKED, NULL);
+
+    s_row_count = count;
+    s_tapped = -1;
+    s_cancel = false;
+    for (int i = 0; i < count; i++) {
+        lv_obj_t *btn = lv_button_create(s_overlay);
+        lv_obj_set_width(btn, lv_pct(100));
+        lv_obj_set_style_radius(btn, 8, 0);
+        lv_obj_add_event_cb(btn, row_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_t *lbl = lv_label_create(btn);
+        lv_label_set_text(lbl, labels[i]);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(lbl, lv_pct(100));
+        lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+        s_rows[i] = btn;
+    }
+    s_sel = (sel >= 0 && sel < count) ? sel : 0;
+    for (int i = 0; i < count; i++) style_row(i, i == s_sel);
+
+    lvgl_port_unlock();
+}
+
+void ui_devlist_set_sel(int idx)
+{
+    lvgl_port_lock(0);
+    if (idx >= 0 && idx < s_row_count) {
+        for (int i = 0; i < s_row_count; i++) style_row(i, i == idx);
+        s_sel = idx;
+        lv_obj_scroll_to_view(s_rows[idx], LV_ANIM_ON);
+    }
+    lvgl_port_unlock();
+}
+
+int ui_devlist_take_tap(void)
+{
+    int v = s_tapped;
+    s_tapped = -1;
+    return v;
+}
+
+bool ui_devlist_take_cancel(void)
+{
+    bool v = s_cancel;
+    s_cancel = false;
+    return v;
+}
+
+void ui_devlist_hide(void)
+{
+    lvgl_port_lock(0);
+    if (s_overlay) {
+        lv_obj_delete(s_overlay);
+        s_overlay = NULL;
+    }
+    s_row_count = 0;
+    lvgl_port_unlock();
 }
