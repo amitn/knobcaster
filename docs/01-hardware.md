@@ -6,15 +6,18 @@ Wiki: <https://www.waveshare.com/wiki/ESP32-S3-Knob-Touch-LCD-1.8>
 ## Pinout status: ✅ CONFIRMED
 
 The GPIO map below is corroborated by **two independent ESP-IDF BSPs that target
-this exact board**:
+this exact board** — every pin, including the push-button, is now confirmed:
 
 - [EmbeddedWizardGUI/ESP32-S3-Knob-Touch-LCD-1.8-EN](https://github.com/EmbeddedWizardGUI/ESP32-S3-Knob-Touch-LCD-1.8-EN)
-  → `main/TargetSpecific/user_config.h` (authoritative pin defines)
-- [joshuacant/BlueKnob](https://github.com/joshuacant/BlueKnob) (same board, BLE remote)
+  → `main/TargetSpecific/user_config.h` (pins), `ew_bsp_display.c` (panel),
+  `ew_bsp_inout.c` (button `GPIO0`)
+- [joshuacant/BlueKnob](https://github.com/joshuacant/BlueKnob) (same board; `esp_lcd_sh8601` driver)
 
-The only item still **TBD** is the knob **push-button** GPIO (not defined in the
-EmbeddedWizard `user_config.h`; candidate is the BOOT/strapping `GPIO0`). Confirm
-on hardware before wiring the press action.
+> ⚠️ **Display controller correction.** The Waveshare wiki and several community
+> threads call this an **ST77916** panel. **Both** working ESP-IDF BSPs for this
+> exact board instead drive it as an **SH8601** (`esp_lcd_sh8601`, QSPI) with a
+> specific init sequence. We use **SH8601**. If a board revision ever ships a real
+> ST77916, revisit this.
 
 ## SoC / memory
 
@@ -29,14 +32,19 @@ on hardware before wiring the press action.
 > PlatformIO board profile: custom `boards/esp32s3-knob.json` (16 MB flash, 8 MB
 > OPI PSRAM). PSRAM set octal via `CONFIG_SPIRAM_MODE_OCT` in `sdkconfig.defaults`.
 
-## Display — ST77916 (QSPI)
+## Display — SH8601 (QSPI)
 
 | Property | Value |
 |----------|-------|
-| Panel | 1.8" round IPS, **360 × 360**, 262K colors |
-| Controller | **ST77916** |
-| Interface | **QSPI** on `SPI2_HOST` |
-| ESP-IDF driver | `esp_lcd_st77916` (managed component) + `esp_lvgl_port` |
+| Panel | 1.8" round, **360 × 360**, 16-bit color (RGB565) |
+| Controller | **SH8601** (QSPI AMOLED-style driver) |
+| Interface | **QSPI** on `SPI2_HOST`, `bits_per_pixel=16`, RGB order |
+| ESP-IDF driver | `espressif/esp_lcd_sh8601` + board init cmds (from EmbeddedWizard BSP) + `esp_lvgl_port` |
+| Backlight | GPIO47, PWM (LEDC) |
+
+> Panel IO via `SH8601_PANEL_IO_QSPI_CONFIG(CS, ...)`; panel via
+> `esp_lcd_new_panel_sh8601()` with `sh8601_vendor_config_t{ .flags.use_qspi_interface = 1 }`
+> and the ~190-entry init-command table copied from `ew_bsp_display.c`.
 
 ## Touch — CST816 (I2C)
 
@@ -50,13 +58,14 @@ on hardware before wiring the press action.
 
 - Rotary **encoder** (A/B quadrature) — primary control (volume / list scroll).
   Confirmed true quadrature in the EmbeddedWizard BSP (`ew_bsp_inout.c`).
-- **Push** action on the knob — select / play-pause. ⚠️ Pin TBD (see above).
-- ESP-IDF: decode with the hardware **PCNT** peripheral (`driver/pulse_cnt.h`)
-  or the `espressif/knob` + `espressif/button` components.
+- **Push** action on the knob — select / play-pause. **GPIO0** (BOOT/strapping),
+  active-low; EmbeddedWizard `ew_bsp_inout.c` reads it with an ANYEDGE GPIO ISR.
+- ESP-IDF: decode the encoder with the hardware **PCNT** peripheral
+  (`driver/pulse_cnt.h`); button via GPIO ISR or the `espressif/button` component.
 
 ## Confirmed GPIO map
 
-### Display (ST77916, QSPI on SPI2_HOST)
+### Display (SH8601, QSPI on SPI2_HOST)
 | Signal | GPIO |
 |--------|------|
 | CS | 14 |
@@ -81,7 +90,7 @@ on hardware before wiring the press action.
 |--------|------|
 | Encoder A | 8 |
 | Encoder B | 7 |
-| Push button | ⚠️ TBD (candidate: GPIO0 / BOOT) |
+| Push button | 0 (BOOT/strapping, active-low) |
 
 > Earlier drafts flagged a "conflict" where I2S/SD seemed to share the display
 > pins — that was a garbled extraction. The display owns GPIO 13–18 on `SPI2_HOST`;
@@ -102,7 +111,7 @@ on hardware before wiring the press action.
 - **PSRAM-first allocation.** LVGL draw buffers + the TLS read buffer go to PSRAM
   (`heap_caps_malloc(..., MALLOC_CAP_SPIRAM)`). EmbeddedWizard uses a 360×36
   (1/10th screen) partial draw buffer — a good starting size.
-- **QSPI display** needs the `esp_lcd_st77916` driver in QSPI mode; reuse the
-  EmbeddedWizard `ew_bsp_display.c` init sequence as a reference.
+- **QSPI display** uses the `esp_lcd_sh8601` driver with the board init-command
+  table from EmbeddedWizard `ew_bsp_display.c` (copied into `hal/display`).
 - **USB Serial/JTAG console** (`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG`) carries logs
   over the native USB port.

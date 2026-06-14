@@ -14,6 +14,6 @@ dependencies:
   # Added in later milestones once the exact registry names/versions are
   # verified on first build (kept out for now so early builds don't fail):
   #   GUI:      lvgl/lvgl, espressif/esp_lvgl_port
-  #   Display:  espressif/esp_lcd_st77916        (QSPI panel)
+  #   Display:  espressif/esp_lcd_sh8601        (QSPI panel)
   #   Touch:    espressif/esp_lcd_touch_cst816s  (I2C)
   # cJSON ships with IDF (no managed dep). Protobuf: hand-rolled or nanopb/nanopb.

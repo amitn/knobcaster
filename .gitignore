@@ -22,3 +22,6 @@ src/secrets.h
 # Editors / OS
 .DS_Store
 *.swp
+
+# Local reference clones (BSPs / analog projects) — never committed
+refs/

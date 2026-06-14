@@ -77,4 +77,10 @@ We don't start from scratch — these inform the design (see
 - **[EmbeddedWizard BSP](https://github.com/EmbeddedWizardGUI/ESP32-S3-Knob-Touch-LCD-1.8-EN)**
   — ESP-IDF BSP for *this exact board*; source of the confirmed pin map.
 - **[BlueKnob](https://github.com/joshuacant/BlueKnob)** — BLE media remote on
-  this board; knob UX + power patterns.
+  this board; source of the **SH8601** display driver + BSP components (touch,
+  backlight PWM, encoder).
+- **[roon-knob](https://github.com/muness/roon-knob)** — Roon controller on this
+  board (close analog: media transport + volume over the network).
+- **[ihayri dev-board examples](https://github.com/ihayri/ESP32-S3-1.8inch-Knob-Display-Development-Board)**
+  and **[VolosR/Knob18Meters](https://github.com/VolosR/Knob18Meters)** — more
+  display/UI examples for this exact board.

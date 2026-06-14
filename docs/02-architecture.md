@@ -13,7 +13,7 @@ for the knob), built on `esp-tls`, the IDF `mdns` component, `cJSON`, and
 | From | Borrow (as reference, not vendored) |
 |------|--------------------------------------|
 | ESPCaster | Cast discovery + controller design, CASTV2 framing, wifi_manager pattern, LVGL GUI structure |
-| EmbeddedWizard BSP | ST77916 QSPI init, CST816 touch, encoder (PCNT) decode, pin config |
+| EmbeddedWizard BSP | SH8601 QSPI init, CST816 touch, encoder (PCNT) decode, pin config |
 | BlueKnob | Knob UX patterns, power/sleep handling, multi-screen nav |
 
 ## Layered view
@@ -58,7 +58,7 @@ for the knob), built on `esp-tls`, the IDF `mdns` component, `cJSON`, and
 | `app/state` | Single source of truth: device list, active device, derived UI model | `AppState` struct + reducers |
 | `ui/*` | LVGL screens & widgets; emits intents, renders `AppState` | `ui_init()`, `ui_render(state)` |
 | `hal/knob` | Encoder decode (PCNT) + button debounce → intents | `espressif/knob`+`button` or `driver/pulse_cnt.h` |
-| `hal/display` | ST77916 QSPI panel + LVGL flush + CST816 touch | `esp_lcd_st77916` + `esp_lcd_touch_cst816s` + `esp_lvgl_port` |
+| `hal/display` | SH8601 QSPI panel + LVGL flush + CST816 touch | `esp_lcd_sh8601` + `esp_lcd_touch_cst816s` + `esp_lvgl_port` |
 | `hal/haptics` *(stretch)* | DRV2605 effects on detents/press (I2C 0x5A) | `haptic_pulse()` |
 
 ## Concurrency model
@@ -162,7 +162,7 @@ ESP-IDF / PlatformIO structure. `src/` is the IDF "main" component (its
 ```
 src/                    # IDF main component
   app_main.c            # app_main(): init HAL, wifi, tasks
-  idf_component.yml     # managed deps (lvgl, mdns, esp_lcd_st77916, ...)
+  idf_component.yml     # managed deps (lvgl, mdns, esp_lcd_sh8601, ...)
   CMakeLists.txt
 components/
   cast/                 # our Cast layer (clean rewrite; ESPCaster as reference)
@@ -175,7 +175,7 @@ components/
     state.*             # AppState + reducers
     controller.*        # intent → command mapping, volume debounce
   hal/
-    display.*           # ST77916 (esp_lcd) + esp_lvgl_port flush
+    display.*           # SH8601 (esp_lcd) + esp_lvgl_port flush
     touch.*             # CST816
     knob.*              # encoder (PCNT) + button
   net/

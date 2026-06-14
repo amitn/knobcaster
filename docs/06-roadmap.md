@@ -13,9 +13,10 @@ Cast protocol) before polishing UX.
 - [x] `include/secrets.h.example` (lv_conf.h deferred to M1 display)
 
 ## M1 — Hardware bring-up
-- [ ] Confirm the **push-button GPIO** on hardware (only remaining pin unknown)
-- [ ] ST77916 QSPI panel up; solid-color + test pattern at 360×360
-      (reference EmbeddedWizard `ew_bsp_display.c`)
+- [x] All pins confirmed incl. push-button **GPIO0** (EmbeddedWizard `ew_bsp_inout.c`)
+- [x] Display controller identified: **SH8601** (not ST77916) — both BSPs agree
+- [ ] SH8601 QSPI panel up; solid-color + test pattern at 360×360
+      (init cmds from EmbeddedWizard `ew_bsp_display.c`)
 - [ ] LVGL 9 via `esp_lvgl_port` with PSRAM draw buffer; "hello" screen
 - [ ] CST816 touch (`esp_lcd_touch_cst816s`) → LVGL pointer indev
 - [ ] Encoder via PCNT + button → events
@@ -62,8 +63,8 @@ Cast protocol) before polishing UX.
 
 ## Open questions
 
-1. **Push-button GPIO** — the one pin not in the EmbeddedWizard BSP. Confirm on
-   hardware (candidate GPIO0/BOOT). Encoder A/B (8/7) and quadrature are confirmed.
+1. ~~Push-button GPIO~~ — **resolved: GPIO0** (EmbeddedWizard `ew_bsp_inout.c`,
+   active-low). Encoder A/B = 8/7. Display = SH8601 (not ST77916).
 2. **TLS memory footprint** — how many concurrent Cast TLS sessions fit in RAM
    alongside LVGL? Drives the connection strategy (single vs warm-pool).
 3. **List previews** — do we want now-playing for *every* device in the list

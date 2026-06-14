@@ -85,7 +85,7 @@ the secondary ESP32.)
 |------|------|
 | `sdkconfig.defaults` | Seed config: PSRAM octal, 16 MB flash, TLS, USB console. Edit **this**, not the generated `sdkconfig.*`. |
 | `partitions.csv` | 16 MB layout: dual OTA apps + SPIFFS + coredump. |
-| `src/idf_component.yml` | Managed components pulled from the Espressif registry (LVGL, `esp_lvgl_port`, `esp_lcd_st77916`, `esp_lcd_touch_cst816s`, `mdns`). |
+| `src/idf_component.yml` | Managed components pulled from the Espressif registry (LVGL, `esp_lvgl_port`, `esp_lcd_sh8601`, `esp_lcd_touch_cst816s`, `mdns`). |
 | `src/CMakeLists.txt` | Registers the `src/` "main" component (added at bring-up). |
 
 To change a config knob interactively: `uv run pio run -t menuconfig`. Persist
