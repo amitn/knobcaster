@@ -11,9 +11,8 @@ dependencies:
   # so we pull it from the registry. Used to parse Cast status payloads.
   espressif/cjson: "*"
 
-  # Added in later milestones once the exact registry names/versions are
-  # verified on first build (kept out for now so early builds don't fail):
-  #   GUI:      lvgl/lvgl, espressif/esp_lvgl_port
-  #   Display:  espressif/esp_lcd_sh8601        (QSPI panel)
-  #   Touch:    espressif/esp_lcd_touch_cst816s  (I2C)
-  # cJSON ships with IDF (no managed dep). Protobuf: hand-rolled or nanopb/nanopb.
+  # GUI + display/touch drivers (M1 hardware bring-up).
+  lvgl/lvgl: "^9.2.0"
+  espressif/esp_lvgl_port: "^2.3.0"
+  espressif/esp_lcd_sh8601: "^1.0.0"        # QSPI panel (this board is SH8601, not ST77916)
+  espressif/esp_lcd_touch_cst816s: "^1.0.0" # I2C capacitive touch

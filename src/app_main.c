@@ -18,6 +18,8 @@
 #include "wifi.h"
 #include "cast_discovery.h"
 #include "cast_session.h"
+#include "display.h"
+#include "ui.h"
 
 // Wi-Fi credentials. Copy include/secrets.h.example -> include/secrets.h.
 #if defined(__has_include)
@@ -59,15 +61,18 @@ static void run_session(const cast_device_t *dev)
             break;
         }
         int64_t now = esp_timer_get_time();
-        if (now - last_log >= 2000000) {  // log a snapshot every ~2s
+        if (now - last_log >= 2000000) {  // refresh log + screen every ~2s
             last_log = now;
             cast_media_status_t m;  cast_session_get_media(s, &m);
             cast_volume_status_t v; cast_session_get_volume(s, &v);
+            int vol_pct = (int)(v.level * 100 + 0.5f);
             ESP_LOGI(TAG, "[%s] %-8s  \"%s\" - \"%s\"  vol=%d%%%s",
                      m.app_name[0] ? m.app_name : "-",
                      player_state_str(m.state),
-                     m.title, m.subtitle,
-                     (int)(v.level * 100 + 0.5f), v.muted ? " (muted)" : "");
+                     m.title, m.subtitle, vol_pct, v.muted ? " (muted)" : "");
+            ui_set_now_playing(dev->friendly_name,
+                               m.title[0] ? m.title : player_state_str(m.state),
+                               m.subtitle, vol_pct);
         }
     }
     cast_session_close(s);
@@ -92,6 +97,10 @@ void app_main(void)
     init_nvs();
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    // Bring up the screen first so there's visible feedback during Wi-Fi join.
+    display_init();
+    ui_init();
 
     wifi_start(WIFI_SSID, WIFI_PASS);
     if (!wifi_wait_connected(30000)) {

@@ -15,11 +15,14 @@ Cast protocol) before polishing UX.
 ## M1 — Hardware bring-up
 - [x] All pins confirmed incl. push-button **GPIO0** (EmbeddedWizard `ew_bsp_inout.c`)
 - [x] Display controller identified: **SH8601** (not ST77916) — both BSPs agree
-- [ ] SH8601 QSPI panel up; solid-color + test pattern at 360×360
-      (init cmds from EmbeddedWizard `ew_bsp_display.c`)
-- [ ] LVGL 9 via `esp_lvgl_port` with PSRAM draw buffer; "hello" screen
+- [x] SH8601 QSPI panel + backlight up (`components/bsp/display.c`, 185 init cmds) — built
+- [x] LVGL 9 via `esp_lvgl_port`; now-playing screen w/ volume arc (`components/ui`) — built
+- [x] app_main drives the screen from the Cast session (`ui_set_now_playing`)
 - [ ] CST816 touch (`esp_lcd_touch_cst816s`) → LVGL pointer indev
-- [ ] Encoder via PCNT + button → events
+- [ ] Encoder via PCNT + button (GPIO0) → events
+
+> Display + UI build clean; **untested on hardware** — panel init, color/byte
+> order, and backlight polarity need on-device validation.
 
 ## M2 — Network & discovery
 - [x] Wi-Fi connect from `secrets.h`, reconnect/backoff (`components/wifi`)
