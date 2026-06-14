@@ -26,9 +26,8 @@ on hardware before wiring the press action.
 | PSRAM | 8 MB **octal (OPI)** — required; LVGL buffers + TLS live here |
 | Connectivity | 2.4 GHz Wi-Fi b/g/n, BT5 (BLE) + BT Classic |
 
-> PlatformIO board profile: `esp32-s3-devkitc-1-n16r8` (16 MB flash, 8 MB OPI
-> PSRAM). Matches the S3R8 memory config; PSRAM set octal via
-> `CONFIG_SPIRAM_MODE_OCT` in `sdkconfig.defaults`.
+> PlatformIO board profile: custom `boards/esp32s3-knob.json` (16 MB flash, 8 MB
+> OPI PSRAM). PSRAM set octal via `CONFIG_SPIRAM_MODE_OCT` in `sdkconfig.defaults`.
 
 ## Display — ST77916 (QSPI)
 

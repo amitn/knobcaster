@@ -94,11 +94,11 @@ is gitignored and rebuilt from defaults.
 
 ## Board profile note
 
-`platformio.ini` uses `board = esp32-s3-devkitc-1-n16r8` — a stand-in profile that
-matches the **16 MB flash / 8 MB OPI PSRAM** memory config of the ESP32-S3R8.
-It is **not** the physical board. If we hit board-specific quirks we'll add a
-custom board JSON under `boards/` and point `board =` at it. PSRAM is configured
-octal via `board_build.psram_type = opi`.
+`platformio.ini` uses `board = esp32s3-knob`, a **custom board JSON** at
+`boards/esp32s3-knob.json` (the espressif32 platform ships no N16R8 DevKitC
+variant). It declares the ESP32-S3, **16 MB flash**, octal PSRAM (`psram_type:
+opi`) and upload params. The actual flash/PSRAM init is driven by
+`sdkconfig.defaults` since this is an ESP-IDF build.
 
 ## CI sketch (later)
 

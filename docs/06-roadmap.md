@@ -8,8 +8,9 @@ Cast protocol) before polishing UX.
 - [x] `sdkconfig.defaults`, `partitions.csv`, `src/idf_component.yml`
 - [x] Implementation docs (this set)
 - [x] Pin map confirmed against EmbeddedWizard BSP ([01](01-hardware.md))
-- [ ] `src/app_main.c` hello + log over USB Serial/JTAG + `src/CMakeLists.txt`
-- [ ] `include/secrets.h.example`, `include/lv_conf.h`
+- [x] `src/app_main.c` boot + heap/wifi heartbeat log + `src/CMakeLists.txt`
+- [x] Custom board JSON (`boards/esp32s3-knob.json`) — **build passes** (RAM 11%, Flash 11%)
+- [x] `include/secrets.h.example` (lv_conf.h deferred to M1 display)
 
 ## M1 — Hardware bring-up
 - [ ] Confirm the **push-button GPIO** on hardware (only remaining pin unknown)
@@ -20,7 +21,7 @@ Cast protocol) before polishing UX.
 - [ ] Encoder via PCNT + button → events
 
 ## M2 — Network & discovery
-- [ ] Wi-Fi connect from `secrets.h`, reconnect/backoff, status on screen
+- [x] Wi-Fi connect from `secrets.h`, reconnect/backoff (`components/wifi`)
 - [ ] mDNS browse `_googlecast._tcp`; parse TXT (`fn`,`md`,`id`,`ca`)
 - [ ] Render discovered device list (no Cast connection yet)
 

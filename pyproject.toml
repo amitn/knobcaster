@@ -11,8 +11,14 @@ requires-python = ">=3.10"
 # pinned PlatformIO is used and never the (possibly absent/global) system one.
 dependencies = [
     "platformio>=6.1.16",
+    # PlatformIO's espressif32 7.x installs some tools (e.g. esptoolpy) via
+    # `python -m pip` into this venv, so pip must be present. uv venvs omit it
+    # by default — declare it explicitly.
+    "pip>=24",
 ]
 
 [tool.uv]
 # Keep the venv in-project so editors / Just recipes find it deterministically.
 managed = true
+# This repo is firmware, not a Python package — don't try to build/install it.
+package = false

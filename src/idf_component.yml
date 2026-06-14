@@ -4,20 +4,12 @@
 dependencies:
   idf: ">=5.1"
 
-  # GUI
-  lvgl/lvgl: "^9.2.0"
-  espressif/esp_lvgl_port: "^2.3.0"
-
-  # Display + touch drivers for this board
-  #   ST77916 is a QSPI panel; CST816S is the I2C touch controller.
-  espressif/esp_lcd_st77916: "^1.0.0"      # verify exact name/version vs registry
-  espressif/esp_lcd_touch_cst816s: "^1.0.0"
-
-  # Networking — Google Cast discovery
+  # Networking — Google Cast discovery (added now; used from M2).
   espressif/mdns: "^1.4.0"
 
-  # JSON for Cast payloads (cJSON also ships in IDF; this is explicit).
-  # espressif/cJSON is part of IDF; no managed dep needed.
-
-  # Protobuf for CASTV2 CastMessage framing (alternative: hand-roll ~60 lines).
-  # nanopb/nanopb: "^0.4.8"
+  # Added in later milestones once the exact registry names/versions are
+  # verified on first build (kept out for now so early builds don't fail):
+  #   GUI:      lvgl/lvgl, espressif/esp_lvgl_port
+  #   Display:  espressif/esp_lcd_st77916        (QSPI panel)
+  #   Touch:    espressif/esp_lcd_touch_cst816s  (I2C)
+  # cJSON ships with IDF (no managed dep). Protobuf: hand-rolled or nanopb/nanopb.
