@@ -157,7 +157,12 @@ test_framework = unity
 
 ## Implementation order
 
-1. Extract `cast_status.{c,h}`; rewire `cast_session.c` to use it (build stays green).
-2. Add the `native` env + Unity + a first `cast_proto` round-trip test (synthetic).
+1. ✅ Extract `cast_status.{c,h}`; rewire `cast_session.c` to use it (build stays green).
+2. ✅ Add the `native` env + Unity + `cast_proto` round-trip tests (`test/test_proto/`).
 3. Add `cast trace` + `just trace`; capture real fixtures on hardware.
-4. Add `cast_status` fixture tests; wire `just test` into CI.
+4. ✅ Add `cast_status` parser tests (`test/test_status/`) — currently against
+   hand-authored fixtures (synthetic); swap in real captures once (3) lands.
+   CI wiring still TODO.
+
+> `just test` runs both suites on the host (23 cases). cJSON for the native env
+> is vendored at `lib/cjson/` (see its README).

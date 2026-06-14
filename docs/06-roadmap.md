@@ -73,9 +73,11 @@ Cast protocol) before polishing UX.
 ## Testing infra (see [07-testing.md](07-testing.md))
 - [x] Design doc: trace capture + native unit tests
 - [x] Extract pure `cast_status.{c,h}` parser (rewired `cast_session`) — build green
-- [ ] `native` env + Unity; `cast_proto` round-trip tests; `just test`
-- [ ] `cast trace` (`-DCAST_TRACE`) + `just trace`; capture fixtures on hardware
-- [ ] `cast_status` fixture tests; wire into CI
+- [x] `native` env + Unity; `cast_proto` round-trip tests; `just test` (`test/test_proto/`)
+- [x] `cast_status` parser tests (`test/test_status/`, 18 cases) — synthetic
+      fixtures; cJSON vendored at `lib/cjson/`
+- [ ] `cast trace` (`-DCAST_TRACE`) + `just trace`; capture real fixtures on hardware
+- [ ] Swap synthetic fixtures for real captures; wire `just test` into CI
 
 ## Speaker selection (UX) — done
 - [x] Knob **press → device list** (opens instantly), **dial navigates**, press/tap
