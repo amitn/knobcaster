@@ -134,6 +134,13 @@ static session_result_t run_session(void)
             ESP_LOGI(TAG, "knob long-press -> %s", v.muted ? "unmute" : "mute");
             cast_session_set_muted(s, !v.muted);
         }
+        // On-screen transport buttons.
+        switch (ui_take_transport()) {
+        case UI_TRANSPORT_PREV:      cast_session_prev(s);         break;
+        case UI_TRANSPORT_NEXT:      cast_session_next(s);         break;
+        case UI_TRANSPORT_PLAYPAUSE: cast_session_toggle_pause(s); break;
+        default: break;
+        }
 
         int64_t now = esp_timer_get_time();
         if (now - last_log >= 2000000) {  // refresh log + screen every ~2s
@@ -149,6 +156,7 @@ static session_result_t run_session(void)
                                m.title[0] ? m.title : player_state_str(m.state),
                                m.subtitle, vol_pct);
             ui_set_muted(v.muted);
+            ui_set_playing(m.state == CAST_PLAYER_PLAYING);
             cache_set(g_active, &m, &v);
         }
     }

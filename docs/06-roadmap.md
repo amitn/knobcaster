@@ -52,8 +52,9 @@ Cast protocol) before polishing UX.
 - [x] Volume debounce (~16 Hz flush of latest target) + reconcile (accept device
       level only when no local change in flight) — `cast_session_poll`
 - [x] Mute via knob **long-press** (~600 ms) — `knob_take_long_pressed` + `set_muted`
-- [ ] Stop/Next/Prev + device-switch via touch gestures (UI work, M5)
-- [ ] Supported-commands gating in the UI
+- [x] On-screen transport buttons (prev / play-pause / next) wired to the session;
+      center play/pause icon follows player state (`ui_*transport`, `ui_set_playing`)
+- [ ] Supported-commands gating in the UI (dim next/prev when unsupported)
 
 ## M5 — Multi-device UX
 - [x] Switch active device via **swipe left/right** (LVGL gesture → `ui_take_swipe`;

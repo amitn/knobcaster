@@ -19,6 +19,20 @@ void ui_set_now_playing(const char *device, const char *title,
 // Reflect mute state on the volume arc (red when muted). Thread-safe.
 void ui_set_muted(bool muted);
 
+// Reflect play state on the center transport button (play vs pause icon).
+void ui_set_playing(bool playing);
+
+// On-screen transport buttons.
+typedef enum {
+    UI_TRANSPORT_NONE = 0,
+    UI_TRANSPORT_PREV,
+    UI_TRANSPORT_PLAYPAUSE,
+    UI_TRANSPORT_NEXT,
+} ui_transport_t;
+
+// Consume a pending transport-button press (UI_TRANSPORT_NONE if none).
+ui_transport_t ui_take_transport(void);
+
 // Consume a pending horizontal swipe: +1 = swipe left (next device),
 // -1 = swipe right (previous device), 0 = none.
 int ui_take_swipe(void);

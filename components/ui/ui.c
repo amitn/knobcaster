@@ -11,6 +11,29 @@ static lv_obj_t *s_title_lbl;
 static lv_obj_t *s_subtitle_lbl;
 static lv_obj_t *s_vol_arc;
 static lv_obj_t *s_hint_lbl;
+static lv_obj_t *s_play_lbl;   // label inside the play/pause button
+
+static volatile ui_transport_t s_transport;
+
+static void transport_cb(lv_event_t *e)
+{
+    s_transport = (ui_transport_t)(intptr_t)lv_event_get_user_data(e);
+}
+
+// Create a round transport button with a symbol; returns its label.
+static lv_obj_t *make_transport_btn(lv_obj_t *parent, const char *sym,
+                                    int x_off, ui_transport_t act)
+{
+    lv_obj_t *b = lv_button_create(parent);
+    lv_obj_set_size(b, 56, 44);
+    lv_obj_set_style_radius(b, 22, 0);
+    lv_obj_align(b, LV_ALIGN_BOTTOM_MID, x_off, -88);
+    lv_obj_add_event_cb(b, transport_cb, LV_EVENT_CLICKED, (void *)(intptr_t)act);
+    lv_obj_t *l = lv_label_create(b);
+    lv_label_set_text(l, sym);
+    lv_obj_center(l);
+    return l;
+}
 
 // Pending swipe direction, consumed by ui_take_swipe().
 static volatile int s_swipe;
@@ -80,11 +103,16 @@ void ui_init(void)
     lv_label_set_text(s_subtitle_lbl, "");
     lv_obj_align(s_subtitle_lbl, LV_ALIGN_CENTER, 0, 28);
 
+    // Transport buttons (prev / play-pause / next).
+    make_transport_btn(scr, LV_SYMBOL_PREV, -72, UI_TRANSPORT_PREV);
+    s_play_lbl = make_transport_btn(scr, LV_SYMBOL_PLAY, 0, UI_TRANSPORT_PLAYPAUSE);
+    make_transport_btn(scr, LV_SYMBOL_NEXT, 72, UI_TRANSPORT_NEXT);
+
     // Hint (bottom).
     s_hint_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(s_hint_lbl, lv_color_hex(0x666666), 0);
-    lv_label_set_text(s_hint_lbl, "dial = volume  swipe = device");
-    lv_obj_align(s_hint_lbl, LV_ALIGN_BOTTOM_MID, 0, -70);
+    lv_label_set_text(s_hint_lbl, "swipe = device   tap = list");
+    lv_obj_align(s_hint_lbl, LV_ALIGN_BOTTOM_MID, 0, -44);
 
     lvgl_port_unlock();
 }
@@ -107,6 +135,21 @@ void ui_set_muted(bool muted)
         muted ? lv_color_hex(0xCC3333) : lv_color_hex(0x1E88E5),
         LV_PART_INDICATOR);
     lvgl_port_unlock();
+}
+
+void ui_set_playing(bool playing)
+{
+    lvgl_port_lock(0);
+    if (s_play_lbl)
+        lv_label_set_text(s_play_lbl, playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+    lvgl_port_unlock();
+}
+
+ui_transport_t ui_take_transport(void)
+{
+    ui_transport_t v = s_transport;
+    s_transport = UI_TRANSPORT_NONE;
+    return v;
 }
 
 int ui_take_swipe(void)
