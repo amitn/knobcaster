@@ -80,3 +80,7 @@ distclean: clean
 # Static analysis over the firmware sources.
 check:
     uv run pio check
+
+# Run host-native unit tests (pure parsers; no hardware).
+test:
+    uv run pio test -e native
