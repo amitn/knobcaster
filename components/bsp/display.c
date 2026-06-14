@@ -17,6 +17,9 @@
 
 static const char *TAG = "display";
 
+static esp_lcd_panel_handle_t s_panel;    // captured in display_init() for sleep/wake
+static volatile bool          s_asleep;   // false at boot (panel is on)
+
 static const sh8601_lcd_init_cmd_t lcd_init_cmds[] = {
     {0xF0, (uint8_t[]){0x28}, 1, 0},
     {0xF2, (uint8_t[]){0x28}, 1, 0},
@@ -215,6 +218,33 @@ void display_backlight(bool on)
     gpio_set_level(BOARD_PIN_LCD_BL, on ? 1 : 0);
 }
 
+// Screen power. Blank the panel + backlight (LVGL keeps running so the knob,
+// button, and touch still wake it; the Cast net task keeps the screen content
+// current underneath). Idempotent.
+void display_sleep(void)
+{
+    if (s_asleep) return;
+    display_backlight(false);                     // kill the glow first
+    lvgl_port_lock(0);
+    esp_lcd_panel_disp_on_off(s_panel, false);    // panel off after it's dark
+    lvgl_port_unlock();
+    s_asleep = true;
+    ESP_LOGI(TAG, "screen sleep");
+}
+
+void display_wake(void)
+{
+    if (!s_asleep) return;
+    lvgl_port_lock(0);
+    esp_lcd_panel_disp_on_off(s_panel, true);     // panel on before it lights up
+    lvgl_port_unlock();
+    display_backlight(true);
+    s_asleep = false;
+    ESP_LOGI(TAG, "screen wake");
+}
+
+bool display_is_asleep(void) { return s_asleep; }
+
 lv_display_t *display_init(void)
 {
     ESP_LOGI(TAG, "init SH8601 QSPI panel (%dx%d)", BOARD_LCD_H_RES, BOARD_LCD_V_RES);
@@ -248,6 +278,7 @@ lv_display_t *display_init(void)
     };
     esp_lcd_panel_handle_t panel = NULL;
     ESP_ERROR_CHECK(esp_lcd_new_panel_sh8601(io, &panel_cfg, &panel));
+    s_panel = panel;   // keep for display_sleep()/display_wake()
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));

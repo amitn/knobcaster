@@ -263,27 +263,59 @@ static int device_list_overlay(void)
     return chosen;
 }
 
+#define SLEEP_TIMEOUT_US (5LL * 60 * 1000000)   // idle time before the screen sleeps
+
 // [UI task] Read knob/touch and turn it into commands for the net task. Never
 // blocks on the network, so the UI stays responsive even while a device connects.
+// Also runs the idle-sleep timer: blanks the screen after SLEEP_TIMEOUT_US with
+// no input and wakes (swallowing the waking input) on the next interaction.
 static void ui_input_task(void *arg)
 {
+    int64_t last_activity_us = 0;   // lazily set on first iteration
+
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(15));
 
+        if (last_activity_us == 0) last_activity_us = esp_timer_get_time();
+
+        // Gather every input exactly once (all are consume-on-read), so a
+        // swallowed wake doesn't drop the next real event.
+        int  d            = knob_take_delta();
+        bool pressed      = knob_take_pressed();
+        bool long_pressed = knob_take_long_pressed();
+        ui_transport_t t  = ui_take_transport();
+        int  sw           = ui_take_swipe();
+        bool center_tap   = ui_take_center_tap();
+
+        bool activity = (d != 0) || pressed || long_pressed ||
+                        (t != UI_TRANSPORT_NONE) || (sw != 0) || center_tap;
+        int64_t now = esp_timer_get_time();
+
+        // Screen asleep: any input wakes it and is SWALLOWED (e.g. turning the
+        // knob to wake must not also change the volume).
+        if (display_is_asleep()) {
+            if (activity) { display_wake(); last_activity_us = now; }
+            continue;
+        }
+        // Awake: refresh the idle timer on activity, else sleep after timeout.
+        if (activity) {
+            last_activity_us = now;
+        } else if (now - last_activity_us > SLEEP_TIMEOUT_US) {
+            display_sleep();
+            continue;
+        }
+
         // Knob rotation -> volume (optimistic arc immediately + command).
-        int d = knob_take_delta();
         if (d != 0) {
             int p = g_volume_pct + d * 3;
             g_volume_pct = p < 0 ? 0 : (p > 100 ? 100 : p);
             ui_set_now_playing(NULL, NULL, NULL, g_volume_pct);
             cmd_send(CMD_VOL, d);
         }
-        if (knob_take_long_pressed()) cmd_send(CMD_MUTE, 0);
+        if (long_pressed) cmd_send(CMD_MUTE, 0);
 
-        ui_transport_t t = ui_take_transport();
         if (t != UI_TRANSPORT_NONE) cmd_send(CMD_TRANSPORT, t);
 
-        int sw = ui_take_swipe();
         if (sw != 0) {
             // Show the speaker we're swiping to right away (net task confirms).
             state_lock();
@@ -300,7 +332,7 @@ static void ui_input_task(void *arg)
         }
 
         // Tap device name or press knob -> device list (dial navigates, press selects).
-        if (ui_take_center_tap() || knob_take_pressed()) {
+        if (center_tap || pressed) {
             state_lock(); int n = g_count; state_unlock();
             if (n > 1) {
                 int chosen = device_list_overlay();
