@@ -48,6 +48,10 @@ static void IRAM_ATTR button_isr(void *arg)
 // Fast poll: one accumulated detent per departure from 0, re-armed at 0.
 static void enc_task(void *arg)
 {
+    // Never delay 0 ticks: at low FREERTOS_HZ, pdMS_TO_TICKS(4) rounds to 0 and
+    // vTaskDelay(0) only yields — the task then busy-spins, starves the idle
+    // task (watchdog) and slows everything else. Clamp to >= 1 tick.
+    const TickType_t poll = pdMS_TO_TICKS(4) ? pdMS_TO_TICKS(4) : 1;
     bool armed = true;
     for (;;) {
         int count = 0;
@@ -59,7 +63,7 @@ static void enc_task(void *arg)
                 armed = false;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(4));
+        vTaskDelay(poll);
     }
 }
 

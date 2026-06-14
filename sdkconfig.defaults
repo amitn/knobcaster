@@ -22,6 +22,11 @@ CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
 # --- CPU ---
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 
+# --- FreeRTOS: 1 kHz tick (1 ms) for fine scheduling. At the 100 Hz default a
+# 4 ms encoder poll (pdMS_TO_TICKS(4)) truncates to 0 ticks and busy-spins,
+# starving the network task and tripping the task watchdog. ---
+CONFIG_FREERTOS_HZ=1000
+
 # --- USB Serial/JTAG console (logs over native USB) ---
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
