@@ -64,7 +64,10 @@ Cast protocol) before polishing UX.
       per-device state (`g_cache`); knob/tap to pick, bg-tap/12s to dismiss
       (`device_list_overlay` + `ui_devlist_*`) — built
 - [ ] Warm-session LRU for instant switching
-- [ ] Cast **group** handling (group vs member volume)
+- [x] Cast **group** handling — group volume on the knob (receiver), plus a
+      members overlay (multizone: `MULTIZONE_STATUS`/`DEVICE_UPDATED`,
+      `SET_DEVICE_VOLUME`) where the knob adjusts each member; `ca` bit 0x20
+      group detection — built, **needs a real Cast group to validate**
 - [ ] Album artwork: fetch `media.metadata.images[]`, decode JPEG → `lv_image` (stretch)
 
 ## M6 — Polish & robustness

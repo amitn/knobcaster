@@ -1,5 +1,6 @@
 #include "cast_discovery.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -53,6 +54,7 @@ int cast_discovery_scan(cast_device_t *out, int max_devices, int timeout_ms)
         const char *fn = txt_lookup(r, "fn");
         const char *md = txt_lookup(r, "md");
         const char *id = txt_lookup(r, "id");
+        const char *ca = txt_lookup(r, "ca");   // capabilities bitmask
 
         strlcpy(d->friendly_name,
                 fn ? fn : (r->instance_name ? r->instance_name : "?"),
@@ -69,8 +71,9 @@ int cast_discovery_scan(cast_device_t *out, int max_devices, int timeout_ms)
             }
         }
 
-        // Cast groups advertise a model like "Google Cast Group".
-        d->is_group = contains_ci(md, "group");
+        // Group = model says "group", or capabilities bit 0x20 (multizone group).
+        int ca_bits = ca ? atoi(ca) : 0;
+        d->is_group = contains_ci(md, "group") || (ca_bits & 0x20);
 
         n++;
     }

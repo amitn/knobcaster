@@ -22,6 +22,9 @@ struct cast_session {
     cast_volume_status_t volume;
     bool         vol_dirty;       // local volume change awaiting flush
     int64_t      last_vol_send_us;
+    bool         is_group;        // device is a Cast group
+    cast_member_t members[CAST_MAX_MEMBERS];
+    int          member_count;
 };
 
 // --- small JSON helpers ------------------------------------------------------
@@ -47,6 +50,13 @@ static void send_get_status_receiver(cast_session_t *s)
     char p[64];
     snprintf(p, sizeof(p), "{\"type\":\"GET_STATUS\",\"requestId\":%d}", ++s->req_id);
     cast_conn_send(s->conn, CAST_SRC_DEFAULT, CAST_DST_RECEIVER, CAST_NS_RECEIVER, p);
+}
+
+static void send_get_status_multizone(cast_session_t *s)
+{
+    char p[64];
+    snprintf(p, sizeof(p), "{\"type\":\"GET_STATUS\",\"requestId\":%d}", ++s->req_id);
+    cast_conn_send(s->conn, CAST_SRC_DEFAULT, CAST_DST_RECEIVER, CAST_NS_MULTIZONE, p);
 }
 
 // Open a virtual connection to the running app and request its media status.
@@ -139,6 +149,45 @@ static void handle_media_status(cast_session_t *s, cJSON *root)
     }
 }
 
+static void parse_member(cJSON *dev, cast_member_t *m)
+{
+    copy_str_field(dev, "deviceId", m->id, sizeof(m->id));
+    copy_str_field(dev, "name", m->name, sizeof(m->name));
+    cJSON *vol = cJSON_GetObjectItemCaseSensitive(dev, "volume");
+    if (vol) {
+        cJSON *lvl = cJSON_GetObjectItemCaseSensitive(vol, "level");
+        cJSON *mut = cJSON_GetObjectItemCaseSensitive(vol, "muted");
+        if (cJSON_IsNumber(lvl)) m->level = (float)lvl->valuedouble;
+        if (cJSON_IsBool(mut))   m->muted = cJSON_IsTrue(mut);
+    }
+}
+
+static void handle_multizone_status(cast_session_t *s, cJSON *root)
+{
+    cJSON *status = cJSON_GetObjectItemCaseSensitive(root, "status");
+    cJSON *devs = status ? cJSON_GetObjectItemCaseSensitive(status, "devices") : NULL;
+    if (!cJSON_IsArray(devs)) return;
+    int n = cJSON_GetArraySize(devs);
+    if (n > CAST_MAX_MEMBERS) n = CAST_MAX_MEMBERS;
+    for (int i = 0; i < n; i++) {
+        memset(&s->members[i], 0, sizeof(s->members[i]));
+        parse_member(cJSON_GetArrayItem(devs, i), &s->members[i]);
+    }
+    s->member_count = n;
+}
+
+static void handle_device_updated(cast_session_t *s, cJSON *root)
+{
+    cJSON *dev = cJSON_GetObjectItemCaseSensitive(root, "device");
+    if (!dev) return;
+    char id[64] = {0};
+    copy_str_field(dev, "deviceId", id, sizeof(id));
+    for (int i = 0; i < s->member_count; i++) {
+        if (strcmp(s->members[i].id, id) == 0) { parse_member(dev, &s->members[i]); return; }
+    }
+    if (s->member_count < CAST_MAX_MEMBERS) parse_member(dev, &s->members[s->member_count++]);
+}
+
 static void dispatch(cast_session_t *s, const cast_msg_t *msg)
 {
     cJSON *root = cJSON_ParseWithLength((const char *)msg->payload, msg->payload_len);
@@ -154,6 +203,9 @@ static void dispatch(cast_session_t *s, const cast_msg_t *msg)
         if (type && !strcmp(type, "RECEIVER_STATUS")) handle_receiver_status(s, root);
     } else if (!strcmp(msg->ns, CAST_NS_MEDIA)) {
         if (type && !strcmp(type, "MEDIA_STATUS")) handle_media_status(s, root);
+    } else if (!strcmp(msg->ns, CAST_NS_MULTIZONE)) {
+        if (type && !strcmp(type, "MULTIZONE_STATUS")) handle_multizone_status(s, root);
+        else if (type && !strcmp(type, "DEVICE_UPDATED")) handle_device_updated(s, root);
     }
     cJSON_Delete(root);
 }
@@ -168,9 +220,11 @@ cast_session_t *cast_session_open(const cast_device_t *dev)
     s->conn = cast_conn_open(dev->ip, dev->port ? dev->port : CAST_PORT);
     if (!s->conn) { free(s); return NULL; }
 
+    s->is_group = dev->is_group;
     cast_conn_send(s->conn, CAST_SRC_DEFAULT, CAST_DST_RECEIVER,
                    CAST_NS_CONNECTION, "{\"type\":\"CONNECT\"}");
     send_get_status_receiver(s);
+    if (s->is_group) send_get_status_multizone(s);   // enumerate member speakers
     s->last_ping_us = esp_timer_get_time();
     return s;
 }
@@ -287,4 +341,36 @@ bool cast_session_toggle_pause(cast_session_t *s)
 {
     return (s->media.state == CAST_PLAYER_PLAYING) ? cast_session_pause(s)
                                                    : cast_session_play(s);
+}
+
+// --- groups / multizone ------------------------------------------------------
+
+bool cast_session_is_group(cast_session_t *s)    { return s->is_group; }
+int  cast_session_member_count(cast_session_t *s) { return s->member_count; }
+
+void cast_session_get_member(cast_session_t *s, int i, cast_member_t *out)
+{
+    if (i >= 0 && i < s->member_count) *out = s->members[i];
+}
+
+bool cast_session_set_member_volume(cast_session_t *s, int i, float level)
+{
+    if (i < 0 || i >= s->member_count) return false;
+    if (level < 0.0f) level = 0.0f;
+    if (level > 1.0f) level = 1.0f;
+    char p[160];
+    snprintf(p, sizeof(p),
+             "{\"type\":\"SET_DEVICE_VOLUME\",\"deviceId\":\"%s\","
+             "\"volume\":{\"level\":%.3f},\"requestId\":%d}",
+             s->members[i].id, level, ++s->req_id);
+    return cast_conn_send(s->conn, CAST_SRC_DEFAULT, CAST_DST_RECEIVER,
+                          CAST_NS_MULTIZONE, p);
+}
+
+bool cast_session_step_member_volume(cast_session_t *s, int i, float delta)
+{
+    if (i < 0 || i >= s->member_count) return false;
+    float level = s->members[i].level + delta;
+    s->members[i].level = level < 0 ? 0 : (level > 1 ? 1 : level);  // optimistic
+    return cast_session_set_member_volume(s, i, s->members[i].level);
 }

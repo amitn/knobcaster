@@ -57,6 +57,8 @@ bool ui_take_center_tap(void);
 void ui_devlist_show(const char *const labels[], int count, int sel);
 // Move the highlight to row idx (and scroll it into view).
 void ui_devlist_set_sel(int idx);
+// Update a row's text (e.g. live member volume).
+void ui_devlist_set_row(int idx, const char *text);
 // Consume a tapped row index, or -1 if none.
 int  ui_devlist_take_tap(void);
 // Consume a background tap (dismiss request). Returns true once.

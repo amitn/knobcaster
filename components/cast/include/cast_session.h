@@ -35,6 +35,16 @@ typedef struct {
     bool  muted;
 } cast_volume_status_t;
 
+#define CAST_MAX_MEMBERS 8
+
+// A member speaker of a Cast group (from the multizone namespace).
+typedef struct {
+    char  id[64];
+    char  name[64];
+    float level;
+    bool  muted;
+} cast_member_t;
+
 typedef struct cast_session cast_session_t;
 
 // Open a session: TLS connect + CONNECT + GET_STATUS. NULL on failure.
@@ -65,6 +75,16 @@ bool cast_session_toggle_pause(cast_session_t *s);  // play/pause by current sta
 bool cast_session_stop(cast_session_t *s);
 bool cast_session_next(cast_session_t *s);
 bool cast_session_prev(cast_session_t *s);
+
+// --- Cast groups (multizone) -------------------------------------------------
+// True if this session's device is a Cast group. Group volume is the normal
+// receiver volume (knob); members are the individual speakers below.
+bool cast_session_is_group(cast_session_t *s);
+int  cast_session_member_count(cast_session_t *s);
+void cast_session_get_member(cast_session_t *s, int i, cast_member_t *out);
+// Set/step an individual member's volume (SET_DEVICE_VOLUME on multizone).
+bool cast_session_set_member_volume(cast_session_t *s, int i, float level);
+bool cast_session_step_member_volume(cast_session_t *s, int i, float delta);
 
 #ifdef __cplusplus
 }

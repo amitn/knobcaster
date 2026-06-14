@@ -21,6 +21,7 @@
 #define CAST_NS_HEARTBEAT  "urn:x-cast:com.google.cast.tp.heartbeat"
 #define CAST_NS_RECEIVER   "urn:x-cast:com.google.cast.receiver"
 #define CAST_NS_MEDIA      "urn:x-cast:com.google.cast.media"
+#define CAST_NS_MULTIZONE  "urn:x-cast:com.google.cast.multizone"
 #define CAST_SRC_DEFAULT   "sender-0"
 #define CAST_DST_RECEIVER  "receiver-0"
 #define CAST_PORT          8009

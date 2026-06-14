@@ -332,6 +332,16 @@ void ui_devlist_set_sel(int idx)
     lvgl_port_unlock();
 }
 
+void ui_devlist_set_row(int idx, const char *text)
+{
+    lvgl_port_lock(0);
+    if (idx >= 0 && idx < s_row_count && s_rows[idx]) {
+        lv_obj_t *lbl = lv_obj_get_child(s_rows[idx], 0);
+        if (lbl) lv_label_set_text(lbl, text);
+    }
+    lvgl_port_unlock();
+}
+
 int ui_devlist_take_tap(void)
 {
     int v = s_tapped;
