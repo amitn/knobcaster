@@ -36,6 +36,10 @@ esp_ip4_addr_t wifi_get_ip(void);
 void wifi_start_ap(const char *ssid);
 void wifi_stop_ap(void);
 
+// Stop auto-reconnecting to the current target (e.g. before provisioning) so the
+// STA doesn't thrash on stale credentials.
+void wifi_forget(void);
+
 // Scan for access points (blocking). Fills out[0..max-1] (deduped by SSID,
 // hidden SSIDs skipped). Returns the number found.
 int wifi_scan(wifi_ap_t *out, int max, int timeout_ms);

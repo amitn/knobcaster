@@ -86,7 +86,8 @@ void knob_init(void)
         .intr_type = GPIO_INTR_ANYEDGE,
     };
     gpio_config(&btn);
-    gpio_install_isr_service(0);
+    esp_err_t e = gpio_install_isr_service(0);   // may already be installed (touch)
+    if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(e);
     gpio_isr_handler_add(BOARD_PIN_BTN, button_isr, NULL);
 
     ESP_LOGI(TAG, "knob ready (A=%d B=%d btn=%d)",

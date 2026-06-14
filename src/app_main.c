@@ -242,6 +242,7 @@ static void run_provisioning(void)
     snprintf(qr, sizeof(qr), "WIFI:S:%s;T:nopass;;", ap);   // scan to join the AP
 
     ESP_LOGI(TAG, "Wi-Fi provisioning: AP \"%s\"", ap);
+    wifi_forget();          // stop retrying the old network while provisioning
     wifi_start_ap(ap);
     prov_start();
     ui_prov_show(qr, ap);

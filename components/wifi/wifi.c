@@ -126,6 +126,12 @@ void wifi_stop_ap(void)
     ESP_LOGI(TAG, "SoftAP stopped");
 }
 
+void wifi_forget(void)
+{
+    s_have_config = false;   // stop auto-reconnect to the previous network
+    esp_wifi_disconnect();
+}
+
 int wifi_scan(wifi_ap_t *out, int max, int timeout_ms)
 {
     (void)timeout_ms;
