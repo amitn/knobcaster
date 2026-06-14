@@ -60,7 +60,8 @@ for the knob), built on `esp-tls`, the IDF `mdns` component, `cJSON`, and
 | `ui/*` | LVGL screens & widgets; emits intents, renders `AppState` | `ui_init()`, `ui_render(state)` |
 | `hal/knob` | Encoder decode (PCNT) + button debounce → intents | `espressif/knob`+`button` or `driver/pulse_cnt.h` |
 | `hal/display` | SH8601 QSPI panel + LVGL flush + CST816 touch | `esp_lcd_sh8601` + `esp_lcd_touch_cst816s` + `esp_lvgl_port` |
-| `hal/haptics` *(stretch)* | DRV2605 effects on detents/press (I2C 0x5A) | `haptic_pulse()` |
+| `bsp/haptics` | DRV2605 click per detent, on a worker task (I2C 0x5A, shared bus) | `haptics_start()`, `haptics_click()` |
+| `albumart` | Async cover-art fetch (HTTPS) + JPEG decode → UI background | `albumart_start()`, `albumart_request(url)`, `albumart_clear()` |
 
 ## Concurrency model
 
@@ -69,7 +70,14 @@ Two FreeRTOS tasks plus LVGL's tick, all pinned deliberately:
 - **Core 1 — `ui_task`**: LVGL handler + input polling. Must stay responsive
   (target 30 fps). Never blocks on network.
 - **Core 0 — `net_task`**: Wi-Fi, mDNS, all Cast TLS sockets, parsing. TLS reads
-  and JSON parsing happen here, off the render path.
+  and JSON parsing happen here, off the render path. Holds a **warm session pool**
+  (3 LRU `cast_session_t`) so switching back to a recent speaker is instant, and
+  rescans (mDNS every 30s) don't drop the live session.
+- **`albumart` task** (core 1, low prio, `components/albumart`): async HTTPS fetch
+  + JPEG decode of cover art, handed to the UI via `ui_set_art()`. Never blocks
+  the UI or net task; requests coalesce to the latest track.
+- **`haptics` task** (`components/bsp/haptics.c`): DRV2605 I2C writes for the
+  per-detent click, so the encoder poll never blocks on I2C.
 
 They communicate through:
 - **Commands queue** (`ui_task` → `net_task`): `CastCommand{ deviceId, verb, arg }`.

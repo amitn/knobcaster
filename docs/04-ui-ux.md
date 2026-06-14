@@ -29,6 +29,22 @@ The two primaries are deliberately split across the two input surfaces — the
 The device list (tap center) is just a faster path to the same selection that
 swiping cycles through.
 
+### Now-playing extras (implemented)
+
+- **Album art** — the current track's cover loads asynchronously and shows as a
+  dimmed full-screen background behind the text (`ui_set_art`, `components/albumart`).
+- **Per-speaker volume color** — the volume ring's color is unique per speaker
+  (hashed from its name), so you can tell at a glance which one you're on; the
+  ring turns red while muted.
+- **Any-script titles** — titles render via LVGL Tiny-TTF with an embedded
+  DejaVu subset (Latin + Hebrew) and bidi, so RTL/non-Latin titles display
+  correctly instead of tofu boxes.
+- **Haptic detents** — a DRV2605 click fires on each detent (the encoder is
+  mechanically smooth).
+- **Screen sleep** — after 5 min idle the backlight + panel turn off; any input
+  wakes it instantly (and that first input is swallowed). Cast stays connected,
+  so the screen shows live state the moment it wakes.
+
 > Single source of truth: the UI only renders an `AppState` snapshot and emits
 > *intents*; it never talks to the network directly (see
 > [02-architecture.md](02-architecture.md#concurrency-model)).

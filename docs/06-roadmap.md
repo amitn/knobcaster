@@ -63,12 +63,15 @@ Cast protocol) before polishing UX.
 - [x] Device-list overlay (tap center): modal list of all speakers with cached
       per-device state (`g_cache`); knob/tap to pick, bg-tap/12s to dismiss
       (`device_list_overlay` + `ui_devlist_*`) — built
-- [ ] Warm-session LRU for instant switching
+- [x] Warm-session pool (3 LRU sessions) for instant switch-back — built
+      (`g_pool` in `app_main.c`; periodic mDNS every 30s, sessions survive rescans)
 - [x] Cast **group** handling — group volume on the knob (receiver), plus a
       members overlay (multizone: `MULTIZONE_STATUS`/`DEVICE_UPDATED`,
       `SET_DEVICE_VOLUME`) where the knob adjusts each member; `ca` bit 0x20
       group detection — built, **needs a real Cast group to validate**
-- [ ] Album artwork: fetch `media.metadata.images[]`, decode JPEG → `lv_image` (stretch)
+- [x] Album artwork: fetch `media.metadata.images[0].url`, decode JPEG → RGB565
+      `lv_image` as a dimmed background. Async on its own task (`components/albumart`,
+      esp_http_client + esp_new_jpeg) so it never blocks the UI/net — built
 
 ## Testing infra (see [07-testing.md](07-testing.md))
 - [x] Design doc: trace capture + native unit tests
@@ -88,7 +91,16 @@ Cast protocol) before polishing UX.
 - [x] Haptics (DRV2605 @ I2C 0x5A): tactile click per encoder detent via a
       worker task (`components/bsp/haptics.c`, shared I2C bus `board_i2c.c`) —
       built, **needs on-device tuning** (ERM vs LRA actuator, effect/library)
-- [ ] Error/edge handling: device disappears, app stops, Wi-Fi drop
+- [x] **Screen sleep**: backlight + panel off after 5 min idle, instant wake on
+      any input (input swallowed). Cast stays warm, so wake shows live state —
+      `display_sleep/wake`, idle timer in `ui_input_task`
+- [x] **Per-speaker volume color**: 16-color palette hashed from the speaker name
+      (`color_for_name` → `ui_set_volume_color`)
+- [x] **Non-Latin titles**: LVGL Tiny-TTF renders an embedded DejaVu subset
+      (Latin + Hebrew) with `LV_USE_BIDI` for RTL; `just gen-font` (fonttools)
+- [x] **Now-playing title refresh** on track change: re-request media `GET_STATUS`
+      when a status push omits the `media` block (`has_media`)
+- [ ] Error/edge handling: device disappears, app stops, Wi-Fi drop (Wi-Fi drop ✓)
 - [ ] Boot time + memory budget pass
 - [ ] OTA updates (dual-app partitions already provisioned)
 - [x] **Wi-Fi provisioning** — SoftAP + on-LCD QR + web form (`192.168.4.1`) +
