@@ -3,7 +3,6 @@
 
 #include <string.h>
 
-#include "cJSON.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 
@@ -26,22 +25,6 @@ struct cast_session {
     cast_member_t members[CAST_MAX_MEMBERS];
     int          member_count;
 };
-
-// --- small JSON helpers ------------------------------------------------------
-
-static void copy_str_field(cJSON *obj, const char *key, char *dst, size_t cap)
-{
-    cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
-    if (cJSON_IsString(it) && it->valuestring) {
-        strlcpy(dst, it->valuestring, cap);
-    }
-}
-
-static const char *str_field(cJSON *obj, const char *key)
-{
-    cJSON *it = cJSON_GetObjectItemCaseSensitive(obj, key);
-    return (cJSON_IsString(it) && it->valuestring) ? it->valuestring : NULL;
-}
 
 // --- outbound ----------------------------------------------------------------
 
@@ -72,42 +55,19 @@ static void connect_transport(cast_session_t *s, const char *transport_id)
     ESP_LOGI(TAG, "connected to media transport %s", s->transport_id);
 }
 
-// --- inbound parsing ---------------------------------------------------------
+// --- inbound: apply parsed status to the session -----------------------------
 
-static cast_player_state_t parse_player_state(const char *s)
+static void apply_receiver_status(cast_session_t *s, const cast_receiver_status_t *rs)
 {
-    if (!s) return CAST_PLAYER_UNKNOWN;
-    if (!strcmp(s, "PLAYING"))   return CAST_PLAYER_PLAYING;
-    if (!strcmp(s, "PAUSED"))    return CAST_PLAYER_PAUSED;
-    if (!strcmp(s, "BUFFERING")) return CAST_PLAYER_BUFFERING;
-    if (!strcmp(s, "IDLE"))      return CAST_PLAYER_IDLE;
-    return CAST_PLAYER_UNKNOWN;
-}
+    // Reconcile volume: accept the device's level only when no local change is
+    // in flight, so external changes show but we don't snap back mid-turn.
+    if (rs->has_level && !s->vol_dirty) s->volume.level = rs->level;
+    if (rs->has_muted) s->volume.muted = rs->muted;
 
-static void handle_receiver_status(cast_session_t *s, cJSON *root)
-{
-    cJSON *status = cJSON_GetObjectItemCaseSensitive(root, "status");
-    if (!status) return;
-
-    cJSON *vol = cJSON_GetObjectItemCaseSensitive(status, "volume");
-    if (vol) {
-        cJSON *level = cJSON_GetObjectItemCaseSensitive(vol, "level");
-        cJSON *muted = cJSON_GetObjectItemCaseSensitive(vol, "muted");
-        // Reconcile: accept the device's level only when we have no local change
-        // in flight, so an external change is reflected but we don't snap back
-        // mid-turn.
-        if (cJSON_IsNumber(level) && !s->vol_dirty)
-            s->volume.level = (float)level->valuedouble;
-        if (cJSON_IsBool(muted)) s->volume.muted = cJSON_IsTrue(muted);
-    }
-
-    cJSON *apps = cJSON_GetObjectItemCaseSensitive(status, "applications");
-    if (cJSON_IsArray(apps) && cJSON_GetArraySize(apps) > 0) {
-        cJSON *app0 = cJSON_GetArrayItem(apps, 0);
-        copy_str_field(app0, "displayName", s->media.app_name, sizeof(s->media.app_name));
-        const char *tid = str_field(app0, "transportId");
-        if (tid && strcmp(tid, s->transport_id) != 0) {
-            connect_transport(s, tid);
+    if (rs->has_app) {
+        strlcpy(s->media.app_name, rs->app_name, sizeof(s->media.app_name));
+        if (rs->transport_id[0] && strcmp(rs->transport_id, s->transport_id) != 0) {
+            connect_transport(s, rs->transport_id);
         }
     } else {
         // Nothing running — device is idle.
@@ -118,96 +78,41 @@ static void handle_receiver_status(cast_session_t *s, cJSON *root)
     }
 }
 
-static void handle_media_status(cast_session_t *s, cJSON *root)
+static void apply_device_update(cast_session_t *s, const cast_member_t *d)
 {
-    cJSON *arr = cJSON_GetObjectItemCaseSensitive(root, "status");
-    if (!cJSON_IsArray(arr) || cJSON_GetArraySize(arr) == 0) return;
-    cJSON *st = cJSON_GetArrayItem(arr, 0);
-
-    s->media.state = parse_player_state(str_field(st, "playerState"));
-
-    cJSON *msid = cJSON_GetObjectItemCaseSensitive(st, "mediaSessionId");
-    if (cJSON_IsNumber(msid)) s->media.media_session_id = msid->valueint;
-
-    cJSON *cmds = cJSON_GetObjectItemCaseSensitive(st, "supportedMediaCommands");
-    if (cJSON_IsNumber(cmds)) {
-        int b = cmds->valueint;
-        s->media.supports_pause = b & 0x01;        // PAUSE
-        s->media.supports_seek  = b & 0x02;        // SEEK
-        s->media.supports_next  = b & (0x40 | 0x10); // QUEUE_NEXT | SKIP_FWD
-        s->media.supports_prev  = b & (0x80 | 0x20); // QUEUE_PREV | SKIP_BACK
-    }
-
-    cJSON *media = cJSON_GetObjectItemCaseSensitive(st, "media");
-    cJSON *meta  = media ? cJSON_GetObjectItemCaseSensitive(media, "metadata") : NULL;
-    if (meta) {
-        copy_str_field(meta, "title", s->media.title, sizeof(s->media.title));
-        // Prefer artist; fall back to subtitle.
-        const char *artist = str_field(meta, "artist");
-        copy_str_field(meta, artist ? "artist" : "subtitle",
-                       s->media.subtitle, sizeof(s->media.subtitle));
-    }
-}
-
-static void parse_member(cJSON *dev, cast_member_t *m)
-{
-    copy_str_field(dev, "deviceId", m->id, sizeof(m->id));
-    copy_str_field(dev, "name", m->name, sizeof(m->name));
-    cJSON *vol = cJSON_GetObjectItemCaseSensitive(dev, "volume");
-    if (vol) {
-        cJSON *lvl = cJSON_GetObjectItemCaseSensitive(vol, "level");
-        cJSON *mut = cJSON_GetObjectItemCaseSensitive(vol, "muted");
-        if (cJSON_IsNumber(lvl)) m->level = (float)lvl->valuedouble;
-        if (cJSON_IsBool(mut))   m->muted = cJSON_IsTrue(mut);
-    }
-}
-
-static void handle_multizone_status(cast_session_t *s, cJSON *root)
-{
-    cJSON *status = cJSON_GetObjectItemCaseSensitive(root, "status");
-    cJSON *devs = status ? cJSON_GetObjectItemCaseSensitive(status, "devices") : NULL;
-    if (!cJSON_IsArray(devs)) return;
-    int n = cJSON_GetArraySize(devs);
-    if (n > CAST_MAX_MEMBERS) n = CAST_MAX_MEMBERS;
-    for (int i = 0; i < n; i++) {
-        memset(&s->members[i], 0, sizeof(s->members[i]));
-        parse_member(cJSON_GetArrayItem(devs, i), &s->members[i]);
-    }
-    s->member_count = n;
-}
-
-static void handle_device_updated(cast_session_t *s, cJSON *root)
-{
-    cJSON *dev = cJSON_GetObjectItemCaseSensitive(root, "device");
-    if (!dev) return;
-    char id[64] = {0};
-    copy_str_field(dev, "deviceId", id, sizeof(id));
     for (int i = 0; i < s->member_count; i++) {
-        if (strcmp(s->members[i].id, id) == 0) { parse_member(dev, &s->members[i]); return; }
+        if (strcmp(s->members[i].id, d->id) == 0) { s->members[i] = *d; return; }
     }
-    if (s->member_count < CAST_MAX_MEMBERS) parse_member(dev, &s->members[s->member_count++]);
+    if (s->member_count < CAST_MAX_MEMBERS) s->members[s->member_count++] = *d;
 }
 
 static void dispatch(cast_session_t *s, const cast_msg_t *msg)
 {
-    cJSON *root = cJSON_ParseWithLength((const char *)msg->payload, msg->payload_len);
-    if (!root) return;
-    const char *type = str_field(root, "type");
+    const char *json = (const char *)msg->payload;
+    size_t len = msg->payload_len;
 
     if (!strcmp(msg->ns, CAST_NS_HEARTBEAT)) {
-        if (type && !strcmp(type, "PING")) {
+        char type[16];
+        if (cast_parse_type(json, len, type, sizeof(type)) && !strcmp(type, "PING")) {
             cast_conn_send(s->conn, CAST_SRC_DEFAULT, CAST_DST_RECEIVER,
                            CAST_NS_HEARTBEAT, "{\"type\":\"PONG\"}");
         }
     } else if (!strcmp(msg->ns, CAST_NS_RECEIVER)) {
-        if (type && !strcmp(type, "RECEIVER_STATUS")) handle_receiver_status(s, root);
+        cast_receiver_status_t rs;
+        if (cast_parse_receiver_status(json, len, &rs)) apply_receiver_status(s, &rs);
     } else if (!strcmp(msg->ns, CAST_NS_MEDIA)) {
-        if (type && !strcmp(type, "MEDIA_STATUS")) handle_media_status(s, root);
+        cast_parse_media_status(json, len, &s->media);
     } else if (!strcmp(msg->ns, CAST_NS_MULTIZONE)) {
-        if (type && !strcmp(type, "MULTIZONE_STATUS")) handle_multizone_status(s, root);
-        else if (type && !strcmp(type, "DEVICE_UPDATED")) handle_device_updated(s, root);
+        cast_member_t tmp[CAST_MAX_MEMBERS];
+        int n = cast_parse_multizone_status(json, len, tmp, CAST_MAX_MEMBERS);
+        if (n >= 0) {
+            for (int i = 0; i < n; i++) s->members[i] = tmp[i];
+            s->member_count = n;
+        } else {
+            cast_member_t d;
+            if (cast_parse_device_updated(json, len, &d)) apply_device_update(s, &d);
+        }
     }
-    cJSON_Delete(root);
 }
 
 // --- public API --------------------------------------------------------------

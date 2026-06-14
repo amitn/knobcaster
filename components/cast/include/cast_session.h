@@ -5,45 +5,11 @@
 #pragma once
 
 #include "cast_types.h"
+#include "cast_status.h"   // status snapshot types + pure parsers
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef enum {
-    CAST_PLAYER_UNKNOWN = 0,
-    CAST_PLAYER_IDLE,
-    CAST_PLAYER_BUFFERING,
-    CAST_PLAYER_PLAYING,
-    CAST_PLAYER_PAUSED,
-} cast_player_state_t;
-
-typedef struct {
-    cast_player_state_t state;
-    char title[96];
-    char subtitle[96];      // artist / secondary line
-    char app_name[48];      // "Spotify", "YouTube Music", ...
-    int  media_session_id;  // required for transport commands
-    bool supports_pause;
-    bool supports_next;
-    bool supports_prev;
-    bool supports_seek;
-} cast_media_status_t;
-
-typedef struct {
-    float level;   // 0.0 .. 1.0
-    bool  muted;
-} cast_volume_status_t;
-
-#define CAST_MAX_MEMBERS 8
-
-// A member speaker of a Cast group (from the multizone namespace).
-typedef struct {
-    char  id[64];
-    char  name[64];
-    float level;
-    bool  muted;
-} cast_member_t;
 
 typedef struct cast_session cast_session_t;
 
