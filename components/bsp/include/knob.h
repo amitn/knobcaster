@@ -21,6 +21,11 @@ bool knob_take_pressed(void);
 // Consume a pending long press (held past ~600 ms). Returns true once per press.
 bool knob_take_long_pressed(void);
 
+// --- debug input injection (serial console emulates the knob) -----------------
+void knob_inject_delta(int detents);   // +CW / -CCW, as if rotated
+void knob_inject_press(void);          // short press
+void knob_inject_long_press(void);     // long press
+
 #ifdef __cplusplus
 }
 #endif

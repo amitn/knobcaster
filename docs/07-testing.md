@@ -67,6 +67,28 @@ CAST TX <namespace> <payload-json>
 Exercise the device (play/pause, change volume, a group, multi-device) to cover
 the message types we parse.
 
+## Serial debug console (on-device input emulation)
+
+The `fbdump` task doubles as a serial debug console over USB-Serial/JTAG — useful
+for driving the UI without the physical knob/touch (and for scripted tests):
+
+| Key | Action |
+|-----|--------|
+| `S` | screenshot (framebuffer → `just shot`) |
+| `+` / `-` | knob rotate CW / CCW (one detent) — volume or speaker-pick per mode |
+| `p` | knob short press (toggle dial mode) |
+| `l` | knob long press (mute) |
+
+Implemented by injecting at the knob source (`knob_inject_delta/press/...`) so all
+downstream logic runs unchanged.
+
+**TODO — extend the debug console:**
+- [ ] Absolute volume set (e.g. `v50`), and mute toggle
+- [ ] Emulate touch: swipe left/right (device switch), tap-center (list),
+      transport buttons (prev/play/next), tap a list row
+- [ ] A `just emit <keys>` recipe (send a command sequence over serial)
+- [ ] Scripted UI smoke test: emit input + screenshot + assert pixels/log
+
 ## Native unit tests
 
 PlatformIO `native` environment + Unity (`pio test -e native`):

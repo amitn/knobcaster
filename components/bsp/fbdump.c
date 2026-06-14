@@ -12,6 +12,8 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 
+#include "knob.h"   // debug input injection
+
 #define FB_W 360
 #define FB_H 360
 
@@ -66,12 +68,20 @@ static void dump_now(void)
     lvgl_port_unlock();
 }
 
+// Serial debug console: 'S' screenshot; +/- knob; p/l press/long-press.
 static void fbdump_task(void *arg)
 {
     uint8_t c;
     for (;;) {
-        int n = usb_serial_jtag_read_bytes(&c, 1, pdMS_TO_TICKS(200));
-        if (n == 1 && (c == 'S' || c == 's')) dump_now();
+        if (usb_serial_jtag_read_bytes(&c, 1, pdMS_TO_TICKS(200)) != 1) continue;
+        switch (c) {
+        case 'S': case 's': dump_now();              break;
+        case '+': case '=': knob_inject_delta(+1);   break;
+        case '-': case '_': knob_inject_delta(-1);   break;
+        case 'p': case 'P': knob_inject_press();      break;
+        case 'l': case 'L': knob_inject_long_press(); break;
+        default: break;
+        }
     }
 }
 

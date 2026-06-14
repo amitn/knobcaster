@@ -20,6 +20,7 @@ static int                s_last_count;
 
 static volatile bool      s_pressed;        // pending short press
 static volatile bool      s_long_pressed;   // pending long press
+static volatile int       s_injected_delta; // detents injected via serial debug
 static volatile int64_t   s_down_us;        // press-down timestamp (0 = up)
 static volatile int64_t   s_last_edge_us;   // debounce timestamp
 
@@ -74,6 +75,11 @@ void knob_init(void)
     ESP_ERROR_CHECK(pcnt_channel_set_level_action(chan_b,
         PCNT_CHANNEL_LEVEL_ACTION_KEEP, PCNT_CHANNEL_LEVEL_ACTION_INVERSE));
 
+    // Mechanical encoders need pull-ups; PCNT doesn't enable them, so floating
+    // A/B lines would never produce clean counts.
+    gpio_set_pull_mode(BOARD_PIN_ENC_A, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(BOARD_PIN_ENC_B, GPIO_PULLUP_ONLY);
+
     ESP_ERROR_CHECK(pcnt_unit_enable(s_pcnt));
     ESP_ERROR_CHECK(pcnt_unit_clear_count(s_pcnt));
     ESP_ERROR_CHECK(pcnt_unit_start(s_pcnt));
@@ -97,15 +103,23 @@ void knob_init(void)
 int knob_take_delta(void)
 {
     int count = 0;
-    if (pcnt_unit_get_count(s_pcnt, &count) != ESP_OK) return 0;
+    if (pcnt_unit_get_count(s_pcnt, &count) != ESP_OK) count = s_last_count;
+    if (count != s_last_count) ESP_LOGI(TAG, "enc raw count=%d", count);  // DEBUG
     int diff = count - s_last_count;
     int detents = diff / COUNTS_PER_DETENT;
     if (detents != 0) {
         // Keep the sub-detent remainder so slow turns aren't lost.
         s_last_count += detents * COUNTS_PER_DETENT;
     }
+    // Fold in any serial-injected detents.
+    int inj = s_injected_delta;
+    if (inj) { s_injected_delta = 0; detents += inj; }
     return detents;
 }
+
+void knob_inject_delta(int detents) { s_injected_delta += detents; }
+void knob_inject_press(void)        { s_pressed = true; }
+void knob_inject_long_press(void)   { s_long_pressed = true; }
 
 bool knob_take_pressed(void)
 {
