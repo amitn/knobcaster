@@ -62,13 +62,11 @@ static void swipe_cb(lv_event_t *e)
     else if (dir == LV_DIR_RIGHT) s_swipe = -1;  // previous device
 }
 
-static void screen_click_cb(lv_event_t *e)
+// Tap on the device name -> open the device list.
+static void device_tap_cb(lv_event_t *e)
 {
     (void)e;
-    lv_point_t p;
-    lv_indev_get_point(lv_indev_active(), &p);
-    int dx = (int)p.x - 180, dy = (int)p.y - 180;   // distance from center
-    if (dx * dx + dy * dy < 120 * 120) s_center_tap = true;
+    s_center_tap = true;
 }
 
 void ui_init(void)
@@ -79,7 +77,6 @@ void ui_init(void)
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
     lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(scr, swipe_cb, LV_EVENT_GESTURE, NULL);
-    lv_obj_add_event_cb(scr, screen_click_cb, LV_EVENT_CLICKED, NULL);
 
     // Volume ring around the round display.
     s_vol_arc = lv_arc_create(scr);
@@ -99,11 +96,14 @@ void ui_init(void)
     lv_obj_set_style_text_color(s_wifi_lbl, lv_color_hex(0xCC3333), 0);
     lv_obj_align(s_wifi_lbl, LV_ALIGN_TOP_MID, 0, 40);
 
-    // Device name (top).
+    // Device name (top) — tapping it opens the device list.
     s_device_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(s_device_lbl, lv_color_white(), 0);
     lv_label_set_text(s_device_lbl, "Cast Knob");
     lv_obj_align(s_device_lbl, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_add_flag(s_device_lbl, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(s_device_lbl, 24);   // larger tap target
+    lv_obj_add_event_cb(s_device_lbl, device_tap_cb, LV_EVENT_CLICKED, NULL);
 
     // Title (center).
     s_title_lbl = lv_label_create(scr);
@@ -132,7 +132,7 @@ void ui_init(void)
     // Hint (bottom).
     s_hint_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(s_hint_lbl, lv_color_hex(0x666666), 0);
-    lv_label_set_text(s_hint_lbl, "press: speakers   swipe: device");
+    lv_label_set_text(s_hint_lbl, "tap name: speakers   swipe: device");
     lv_obj_align(s_hint_lbl, LV_ALIGN_BOTTOM_MID, 0, -44);
 
     lvgl_port_unlock();

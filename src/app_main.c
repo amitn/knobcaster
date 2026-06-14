@@ -72,11 +72,12 @@ static dev_cache_t g_cache[CAST_MAX_DEVICES];
 
 typedef enum {
     SESSION_CLOSED    = 0,  // connection dropped -> rescan
-    SESSION_SWITCHED  = 1,  // user swiped -> reopen new active device
-    SESSION_OPEN_LIST = 2,  // user tapped center -> show device list
+    SESSION_SWITCHED  = 1,  // user picked a different device -> reopen
 } session_result_t;
 
-static void members_overlay(cast_session_t *s);   // group member volumes
+// Device list overlay; polls `s` so the active session stays alive while open.
+// Returns the chosen device index, or -1 to keep the current one.
+static int device_list_overlay(cast_session_t *s);
 
 static void cache_set(int idx, const cast_media_status_t *m, const cast_volume_status_t *v)
 {
@@ -121,20 +122,16 @@ static session_result_t run_session(void)
             cast_session_close(s);
             return SESSION_SWITCHED;
         }
-        // Center tap -> group members (if a group) else the device-list overlay.
-        if (ui_take_center_tap()) {
-            if (cast_session_is_group(s) && cast_session_member_count(s) > 0) {
-                members_overlay(s);              // keeps this session open
-            } else if (g_count > 1) {
+        // Tap the device name (or press the knob) -> open the device list. The
+        // session stays alive while the list is open, so re-selecting the same
+        // device (or cancelling) does NOT reconnect.
+        if (ui_take_center_tap() || (knob_take_pressed() && g_count > 1)) {
+            int chosen = device_list_overlay(s);
+            if (chosen >= 0 && chosen != g_active) {
+                g_active = chosen;
                 cast_session_close(s);
-                return SESSION_OPEN_LIST;
+                return SESSION_SWITCHED;
             }
-        }
-
-        // Knob press -> open the device list (navigate it with the dial).
-        if (knob_take_pressed() && g_count > 1) {
-            cast_session_close(s);
-            return SESSION_OPEN_LIST;
         }
 
         // Knob rotation -> volume (optimistic; arc follows immediately).
@@ -184,7 +181,7 @@ static session_result_t run_session(void)
 // current one. Knob rotates the highlight / press selects; tap a row to select;
 // tap the background or wait 12 s to cancel. Opens instantly (no per-device
 // connect) — shows names + cached state where known.
-static int device_list_overlay(void)
+static int device_list_overlay(cast_session_t *s)
 {
     static char buf[CAST_MAX_DEVICES][96];
     const char *labels[CAST_MAX_DEVICES];
@@ -205,7 +202,7 @@ static int device_list_overlay(void)
     int chosen = -1;
     int64_t t0 = esp_timer_get_time();
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(30));
+        if (!cast_session_poll(s, 30)) { chosen = -1; break; }  // keep session alive
         int d = knob_take_delta();
         if (d != 0) {
             sel = ((sel + d) % g_count + g_count) % g_count;
@@ -261,47 +258,6 @@ static void run_provisioning(void)
     }
 }
 
-// Group members overlay: list the active group's speakers; the knob adjusts the
-// highlighted member's volume (the group session stays open for live updates).
-static void members_overlay(cast_session_t *s)
-{
-    int n = cast_session_member_count(s);
-    if (n <= 0) return;
-
-    static char buf[CAST_MAX_MEMBERS][96];
-    const char *labels[CAST_MAX_MEMBERS];
-    for (int i = 0; i < n; i++) {
-        cast_member_t m; cast_session_get_member(s, i, &m);
-        snprintf(buf[i], sizeof(buf[i]), "%s  %d%%%s", m.name[0] ? m.name : "member",
-                 (int)(m.level * 100 + 0.5f), m.muted ? "  M" : "");
-        labels[i] = buf[i];
-    }
-    ui_devlist_show(labels, n, 0);
-
-    int sel = 0;
-    int64_t t0 = esp_timer_get_time();
-    for (;;) {
-        if (!cast_session_poll(s, 50)) break;     // keep the group session alive
-
-        int d = knob_take_delta();
-        if (d != 0) { cast_session_step_member_volume(s, sel, d * 0.03f); t0 = esp_timer_get_time(); }
-        int tapped = ui_devlist_take_tap();
-        if (tapped >= 0) { sel = tapped; ui_devlist_set_sel(sel); t0 = esp_timer_get_time(); }
-        if (ui_devlist_take_cancel()) break;
-        if (knob_take_pressed())      break;
-        if (esp_timer_get_time() - t0 > 15000000) break;
-
-        // Reflect the latest member volumes (knob changes + DEVICE_UPDATED pushes).
-        int cur = cast_session_member_count(s);
-        for (int i = 0; i < n && i < cur; i++) {
-            cast_member_t m; cast_session_get_member(s, i, &m);
-            snprintf(buf[i], sizeof(buf[i]), "%s  %d%%%s", m.name[0] ? m.name : "member",
-                     (int)(m.level * 100 + 0.5f), m.muted ? "  M" : "");
-            ui_devlist_set_row(i, buf[i]);
-        }
-    }
-    ui_devlist_hide();
-}
 
 static void init_nvs(void)
 {
@@ -391,17 +347,11 @@ void app_main(void)
             }
         }
 
-        // Run the active device; swipe or device-list selection reopens the new
-        // active device immediately (no rescan). Only a dropped connection
-        // breaks out to rescan.
+        // Run the active device; picking a different device (list/swipe) reopens
+        // it immediately (no rescan). Only a dropped connection breaks out.
         session_result_t r;
         do {
             r = run_session();
-            if (r == SESSION_OPEN_LIST) {
-                int chosen = device_list_overlay();
-                if (chosen >= 0) g_active = chosen;
-                r = SESSION_SWITCHED;  // reopen the (possibly new) active device
-            }
         } while (r == SESSION_SWITCHED);
         strlcpy(g_active_id, g_devices[g_active].id, sizeof(g_active_id));
         vTaskDelay(pdMS_TO_TICKS(2000));

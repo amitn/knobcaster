@@ -9,8 +9,8 @@
 
 static const char *TAG = "knob";
 
-// ~4 PCNT counts per physical detent on this encoder.
-#define COUNTS_PER_DETENT 4
+// PCNT counts per physical detent. This board's encoder appears to be ~1/detent.
+#define COUNTS_PER_DETENT 1
 
 static pcnt_unit_handle_t s_pcnt;
 static int                s_last_count;
