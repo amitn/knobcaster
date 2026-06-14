@@ -11,6 +11,7 @@ static lv_obj_t *s_title_lbl;
 static lv_obj_t *s_subtitle_lbl;
 static lv_obj_t *s_vol_arc;
 static lv_obj_t *s_hint_lbl;
+static lv_obj_t *s_prev_btn, *s_play_btn, *s_next_btn;
 static lv_obj_t *s_play_lbl;   // label inside the play/pause button
 
 static volatile ui_transport_t s_transport;
@@ -20,7 +21,7 @@ static void transport_cb(lv_event_t *e)
     s_transport = (ui_transport_t)(intptr_t)lv_event_get_user_data(e);
 }
 
-// Create a round transport button with a symbol; returns its label.
+// Create a round transport button with a symbol; returns the button.
 static lv_obj_t *make_transport_btn(lv_obj_t *parent, const char *sym,
                                     int x_off, ui_transport_t act)
 {
@@ -32,7 +33,18 @@ static lv_obj_t *make_transport_btn(lv_obj_t *parent, const char *sym,
     lv_obj_t *l = lv_label_create(b);
     lv_label_set_text(l, sym);
     lv_obj_center(l);
-    return l;
+    return b;
+}
+
+static void set_btn_enabled(lv_obj_t *b, bool en)
+{
+    if (en) {
+        lv_obj_remove_state(b, LV_STATE_DISABLED);
+        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    } else {
+        lv_obj_add_state(b, LV_STATE_DISABLED);     // dimmed by the theme
+        lv_obj_remove_flag(b, LV_OBJ_FLAG_CLICKABLE);
+    }
 }
 
 // Pending swipe direction, consumed by ui_take_swipe().
@@ -104,9 +116,10 @@ void ui_init(void)
     lv_obj_align(s_subtitle_lbl, LV_ALIGN_CENTER, 0, 28);
 
     // Transport buttons (prev / play-pause / next).
-    make_transport_btn(scr, LV_SYMBOL_PREV, -72, UI_TRANSPORT_PREV);
-    s_play_lbl = make_transport_btn(scr, LV_SYMBOL_PLAY, 0, UI_TRANSPORT_PLAYPAUSE);
-    make_transport_btn(scr, LV_SYMBOL_NEXT, 72, UI_TRANSPORT_NEXT);
+    s_prev_btn = make_transport_btn(scr, LV_SYMBOL_PREV, -72, UI_TRANSPORT_PREV);
+    s_play_btn = make_transport_btn(scr, LV_SYMBOL_PLAY, 0, UI_TRANSPORT_PLAYPAUSE);
+    s_next_btn = make_transport_btn(scr, LV_SYMBOL_NEXT, 72, UI_TRANSPORT_NEXT);
+    s_play_lbl = lv_obj_get_child(s_play_btn, 0);
 
     // Hint (bottom).
     s_hint_lbl = lv_label_create(scr);
@@ -150,6 +163,15 @@ ui_transport_t ui_take_transport(void)
     ui_transport_t v = s_transport;
     s_transport = UI_TRANSPORT_NONE;
     return v;
+}
+
+void ui_set_transport_enabled(bool prev, bool playpause, bool next)
+{
+    lvgl_port_lock(0);
+    set_btn_enabled(s_prev_btn, prev);
+    set_btn_enabled(s_play_btn, playpause);
+    set_btn_enabled(s_next_btn, next);
+    lvgl_port_unlock();
 }
 
 int ui_take_swipe(void)

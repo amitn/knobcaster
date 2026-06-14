@@ -157,6 +157,7 @@ static session_result_t run_session(void)
                                m.subtitle, vol_pct);
             ui_set_muted(v.muted);
             ui_set_playing(m.state == CAST_PLAYER_PLAYING);
+            ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
             cache_set(g_active, &m, &v);
         }
     }

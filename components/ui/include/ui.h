@@ -33,6 +33,9 @@ typedef enum {
 // Consume a pending transport-button press (UI_TRANSPORT_NONE if none).
 ui_transport_t ui_take_transport(void);
 
+// Enable/disable (dim) transport buttons per the app's supported commands.
+void ui_set_transport_enabled(bool prev, bool playpause, bool next);
+
 // Consume a pending horizontal swipe: +1 = swipe left (next device),
 // -1 = swipe right (previous device), 0 = none.
 int ui_take_swipe(void);
