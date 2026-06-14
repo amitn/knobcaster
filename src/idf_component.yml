@@ -7,6 +7,10 @@ dependencies:
   # Networking — Google Cast discovery (added now; used from M2).
   espressif/mdns: "^1.4.0"
 
+  # cJSON — bundled in IDF <=5.x as component `json`, removed from IDF 6.0 core,
+  # so we pull it from the registry. Used to parse Cast status payloads.
+  espressif/cjson: "*"
+
   # Added in later milestones once the exact registry names/versions are
   # verified on first build (kept out for now so early builds don't fail):
   #   GUI:      lvgl/lvgl, espressif/esp_lvgl_port

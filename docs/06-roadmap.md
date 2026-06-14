@@ -29,14 +29,16 @@ Cast protocol) before polishing UX.
 ## M3 — Cast read path  (reference: ESPCaster `chromecast_controller`)
 - [x] TLS connect to `:8009` via `esp-tls` (`skip_common_name`) — `cast_connection.c`
 - [x] CASTV2 framing + minimal `CastMessage` protobuf encode/decode — `cast_proto.c`
-- [x] Handshake probe: CONNECT + GET_STATUS, log raw replies (`probe_device`)
-- [ ] PING/PONG keepalive
-- [ ] Parse RECEIVER_STATUS → volume + app transportId (cJSON)
-- [ ] Media CONNECT + GET_STATUS → now-playing + mediaSessionId
-- [ ] Live status updates reduce into `AppState`; show now-playing on screen
+- [x] Handshake: CONNECT + GET_STATUS (`cast_session_open`)
+- [x] PING keepalive (5s) + PONG reply to device PINGs (`cast_session_poll`)
+- [x] Parse RECEIVER_STATUS → volume + app transportId (cJSON) → media transport
+- [x] Media CONNECT + GET_STATUS → now-playing (title/artist) + mediaSessionId
+      + supportedMediaCommands (`cast_session.c`)
+- [x] Live status pushed into session snapshots; `run_session` logs now-playing
+- [ ] Reduce into a shared `AppState` for the UI (with M5)
 
-> Builds clean; **untested on hardware/real Cast device** — the probe path needs
-> on-device validation (TLS handshake, framing, actual payloads).
+> Builds clean (managed `espressif/cjson`); **untested on a real Cast device** —
+> TLS handshake, framing, and payload shapes need on-device validation.
 
 ## M4 — Cast control path
 - [ ] SET_VOLUME from knob with debounce + reconcile
