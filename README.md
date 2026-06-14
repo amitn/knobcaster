@@ -7,15 +7,10 @@ Turn the knob to change volume. Press it to pick a speaker, long-press to mute.
 On-screen buttons handle play / pause / next / previous, and the round display
 shows what's playing — title, artist, and the album cover as a dimmed backdrop.
 
-```
-        ╭───────────────╮
-        │   Kitchen     │   ← Cast device name (tap to pick a speaker)
-        │  ♪  Bad Guy   │   ← now playing (title / artist)
-        │   Billie...   │   ← album art dimmed behind the text
-        │  ◁  ⏸  ▷  62% │   ← transport buttons · volume ring follows the knob
-        ╰───────────────╯
-   dial = volume · press = speaker list · long-press = mute · swipe = speaker
-```
+<p align="center">
+  <img src="docs/now-playing.png" alt="Now-playing screen: speaker name, title/artist, album art behind the text, and the volume ring" width="320">
+</p>
+<p align="center"><em>dial = volume · press = speaker list · long-press = mute · swipe = speaker</em></p>
 
 ## Status
 
