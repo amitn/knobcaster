@@ -3,24 +3,39 @@
 A physical volume/transport controller for **Google Cast (Chromecast) speakers**,
 built on the [Waveshare ESP32-S3-Knob-Touch-LCD-1.8](https://www.waveshare.com/wiki/ESP32-S3-Knob-Touch-LCD-1.8).
 
-Turn the knob to change volume. Push to play/pause. Tap the round touchscreen to
-jump between every Cast speaker on your Wi-Fi, see what's playing, and control
-transport (play / pause / stop / next / previous).
+Turn the knob to change volume. Press it to pick a speaker, long-press to mute.
+On-screen buttons handle play / pause / next / previous, and the round display
+shows what's playing — title, artist, and the album cover as a dimmed backdrop.
 
 ```
         ╭───────────────╮
-        │   Kitchen     │   ← Cast device name
-        │  ▶  Bad Guy   │   ← now playing (title / artist)
-        │   Billie...   │
-        │   ▮▮▮▮▮▯▯  62% │   ← volume ring follows the knob
+        │   Kitchen     │   ← Cast device name (tap to pick a speaker)
+        │  ♪  Bad Guy   │   ← now playing (title / artist)
+        │   Billie...   │   ← album art dimmed behind the text
+        │  ◁  ⏸  ▷  62% │   ← transport buttons · volume ring follows the knob
         ╰───────────────╯
-   dial = volume · swipe = change speaker · press = play/pause
+   dial = volume · press = speaker list · long-press = mute · swipe = speaker
 ```
 
 ## Status
 
-🚧 **Design / bring-up phase.** This repo currently contains the implementation
-docs and build tooling. Firmware sources land per the [roadmap](docs/06-roadmap.md).
+✅ **Working firmware.** Discovers and controls Cast speakers end-to-end:
+now-playing, volume/mute, transport, speaker switching, groups, album art, and
+Wi-Fi provisioning. See [Features](#features) and the [roadmap](docs/06-roadmap.md).
+
+## Features
+
+- **Volume & mute** — turn the knob (a per-speaker colored ring follows it);
+  long-press to mute.
+- **Switch speakers** — press the knob (or tap the name) for a scrollable list,
+  or swipe left/right. Recently-used speakers stay warm, so switching back is
+  instant.
+- **Now playing** — title, artist, play state, and the **album cover** shown as
+  a dimmed background. Non-Latin titles (e.g. Hebrew, RTL) render correctly.
+- **Transport** — on-screen previous / play-pause / next, enabled per what the
+  app supports.
+- **Cast groups** — multi-room groups are discovered and controllable.
+- **Wi-Fi setup on-device** — QR + captive portal, no rebuild (see below).
 
 ## Quick start
 
@@ -30,11 +45,20 @@ global PlatformIO.
 
 ```bash
 just setup          # create .venv via uv, install pinned PlatformIO into it
+just doctor         # (optional) check toolchain + detected serial ports
+just build          # compile the firmware
 just flash          # build + upload to the board (USB-C, S3 side — see below)
 just monitor        # watch serial logs
+just dev            # build + upload + monitor in one shot
 ```
 
-Run `just` with no arguments to list every recipe.
+Run `just` with no arguments to list every recipe. First build downloads the
+ESP-IDF toolchain and managed components, so it takes a few minutes; later builds
+are seconds.
+
+On first power-up the knob boots, joins Wi-Fi (or starts the setup portal — see
+below), discovers your Cast speakers over mDNS, and lands on the now-playing
+screen for the first speaker. Then use it as described in the [User guide](#user-guide).
 
 ### Wi-Fi setup (on-device, no rebuild)
 
@@ -51,6 +75,34 @@ The board muxes one USB-C between the **ESP32-S3** (native USB, `/dev/ttyACM*`)
 and a secondary **ESP32** (CH340 bridge, `/dev/ttyUSB*`). `platformio.ini` pins
 uploads to the `ttyACM*` (S3) side. If a flash hits the wrong chip, replug USB or
 enter download mode (hold **BOOT**, tap **RESET**, release **BOOT**).
+
+## User guide
+
+The round screen is the now-playing view for the **active speaker**. All of these
+work from there:
+
+| Action | Do this |
+|--------|---------|
+| **Change volume** | Turn the knob. The colored ring shows the level and updates instantly; the speaker follows. |
+| **Mute / unmute** | Long-press the knob (the ring turns red while muted). |
+| **Pick a speaker** | Press the knob, or tap the speaker name. A list appears — **turn** the knob to scroll, **press** to select (or tap a row). Tap outside / wait to dismiss. |
+| **Next / previous speaker** | Swipe left / right on the screen. |
+| **Play / pause, next, previous** | Tap the on-screen buttons. Buttons dim when the app doesn't support them. |
+
+Notes:
+
+- **Instant switch-back.** The few most-recently-used speakers stay connected, so
+  returning to one is immediate (no reconnect). A brand-new speaker shows
+  "connecting…" for ~½ second.
+- **Per-speaker color.** Each speaker gets its own volume-ring color, so you can
+  tell at a glance which one you're on.
+- **Album art & titles.** The cover art loads in the background (a moment after
+  the track) and dims behind the text. Titles in any script — including
+  right-to-left (Hebrew) — render correctly.
+- **Live updates.** If someone else changes the volume or skips a track, the
+  screen reflects it.
+- **Groups.** Cast multi-room groups appear in the list like any speaker; the
+  knob controls the group volume.
 
 ## How it works (one paragraph)
 
