@@ -122,7 +122,9 @@ void knob_init(void)
     if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(e);
     gpio_isr_handler_add(BOARD_PIN_BTN, button_isr, NULL);
 
-    xTaskCreate(enc_task, "enc", 2560, NULL, 6, NULL);
+    // Priority 3: below ui_input (5, the consumer of knob deltas) so the input
+    // task always preempts this poller; the 4ms sleep keeps it from hogging CPU.
+    xTaskCreate(enc_task, "enc", 2560, NULL, 3, NULL);
 
     ESP_LOGI(TAG, "knob ready (A=%d B=%d btn=%d)",
              BOARD_PIN_ENC_A, BOARD_PIN_ENC_B, BOARD_PIN_BTN);
