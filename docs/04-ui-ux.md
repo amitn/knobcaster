@@ -29,6 +29,27 @@ swiping cycles through.
 > *intents*; it never talks to the network directly (see
 > [02-architecture.md](02-architecture.md#concurrency-model)).
 
+## TODO — dial mode toggle (planned redesign)
+
+Make the **knob press toggle the dial's function between two modes**, with a clear
+on-screen indicator of the current mode:
+
+| Mode | Dial does | Indicator |
+|------|-----------|-----------|
+| **Volume** (default) | adjust the active speaker's volume | volume ring + % |
+| **Speakers** | scroll/select the active speaker from the discovered list | highlighted device name / list |
+
+- **Press** = switch mode (Volume ⇄ Speakers). The dial's effect follows the mode.
+- In **Speakers** mode, rotating moves the selection; settling on a device (or a
+  short timeout / press back to Volume) makes it active and opens its session.
+- This supersedes today's model where the dial is always volume and **press =
+  play/pause**. Open question: where play/pause goes — likely the on-screen
+  transport buttons only, or a long-press. Decide before implementing.
+- Keep swipe (quick prev/next device) and tap-center (full list) as-is, or fold
+  them into Speakers mode.
+
+Status: **not implemented** — tracked in [06-roadmap.md](06-roadmap.md).
+
 ## Screens
 
 ### A. Now-Playing (home)

@@ -26,6 +26,11 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
 # --- TLS: Cast devices use self-signed certs; we connect without CA verify. ---
+# IDF 6.0 esp-tls refuses to connect with no verification option unless these
+# insecure opt-ins are set (then it uses MBEDTLS_SSL_VERIFY_NONE). Required for
+# the Cast control channel.
+CONFIG_ESP_TLS_INSECURE=y
+CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
 # (esp-tls is built-in; mbedTLS heap sizing matters with PSRAM enabled.)
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH=y

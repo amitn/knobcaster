@@ -66,6 +66,10 @@ if (esp_tls_conn_new_sync(host_ip_str, strlen(host_ip_str), 8009, &cfg, tls) != 
 - Budget RAM: each TLS session needs sizeable buffers. Prefer one active session;
   with `CONFIG_MBEDTLS_DYNAMIC_BUFFER` + PSRAM, mbedTLS buffers can grow off the
   internal heap.
+- **IDF 6.0 gotcha:** esp-tls refuses to connect with no cert verification unless
+  you opt in: `CONFIG_ESP_TLS_INSECURE=y` + `CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y`
+  (in `sdkconfig.defaults`). Without them you get
+  `ESP_ERR_MBEDTLS_SSL_SETUP_FAILED` / "No server verification option set".
 
 ## 3. Framing — length-prefixed protobuf
 
