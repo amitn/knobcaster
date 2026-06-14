@@ -18,7 +18,7 @@ Cast protocol) before polishing UX.
 - [x] SH8601 QSPI panel + backlight up (`components/bsp/display.c`, 185 init cmds) — built
 - [x] LVGL 9 via `esp_lvgl_port`; now-playing screen w/ volume arc (`components/ui`) — built
 - [x] app_main drives the screen from the Cast session (`ui_set_now_playing`)
-- [ ] CST816 touch (`esp_lcd_touch_cst816s`) → LVGL pointer indev
+- [x] CST816 touch (`esp_lcd_touch_cst816s`, IDF6 I2C-master) → LVGL pointer (`touch.c`) — built
 - [ ] Encoder via PCNT + button (GPIO0) → events
 
 > Display + UI build clean; **untested on hardware** — panel init, color/byte

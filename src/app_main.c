@@ -99,7 +99,8 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     // Bring up the screen first so there's visible feedback during Wi-Fi join.
-    display_init();
+    lv_display_t *disp = display_init();
+    touch_init(disp);
     ui_init();
 
     wifi_start(WIFI_SSID, WIFI_PASS);
