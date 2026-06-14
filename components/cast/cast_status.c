@@ -128,6 +128,16 @@ bool cast_parse_media_status(const char *json, size_t len, cast_media_status_t *
         const char *artist = str_field(meta, "artist");   // prefer artist, else subtitle
         copy_str_field(meta, artist ? "artist" : "subtitle",
                        inout->subtitle, sizeof(inout->subtitle));
+
+        // Album art: metadata.images[0].url (fall back to media.images[0].url).
+        cJSON *images = cJSON_GetObjectItemCaseSensitive(meta, "images");
+        if (!cJSON_IsArray(images) || cJSON_GetArraySize(images) == 0)
+            images = cJSON_GetObjectItemCaseSensitive(media, "images");
+        inout->art_url[0] = '\0';
+        if (cJSON_IsArray(images) && cJSON_GetArraySize(images) > 0) {
+            cJSON *img0 = cJSON_GetArrayItem(images, 0);
+            copy_str_field(img0, "url", inout->art_url, sizeof(inout->art_url));
+        }
     }
     cJSON_Delete(root);
     return true;

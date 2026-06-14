@@ -29,6 +29,7 @@
 #include "knob.h"
 #include "fbdump.h"
 #include "ui.h"
+#include "albumart.h"
 
 // Optional compiled-in Wi-Fi creds (include/secrets.h). If absent, the device
 // falls back to on-device web provisioning (SoftAP + QR + form).
@@ -67,6 +68,7 @@ static int           g_active;
 static char          g_active_id[CAST_ID_LEN];  // sticky selection across rescans
 static SemaphoreHandle_t g_state_mtx;
 static volatile int  g_volume_pct;              // for the UI's optimistic arc
+static char          g_shown_art[512];          // art URL currently shown (net task only)
 
 // Cached per-device state for the device-list overlay (parallel to g_devices;
 // cleared on each rescan). The active device's entry is kept live.
@@ -206,6 +208,14 @@ static void render_session(warm_t *e, bool active)
     ui_set_playing(m.state == CAST_PLAYER_PLAYING);
     ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
     ui_set_wifi(true);
+
+    // Album art: fetch only when the URL changes; clear when idle / no art.
+    if (m.state == CAST_PLAYER_IDLE || !m.art_url[0]) {
+        if (g_shown_art[0]) { albumart_clear(); g_shown_art[0] = '\0'; }
+    } else if (strcmp(m.art_url, g_shown_art) != 0) {
+        strlcpy(g_shown_art, m.art_url, sizeof(g_shown_art));
+        albumart_request(m.art_url);
+    }
 }
 
 // [UI task] Modal device-list overlay. Snapshots the device list, shows it, and
@@ -382,6 +392,7 @@ void app_main(void)
     ui_init();
     fbdump_start();   // `just shot` -> screen.png
     xTaskCreate(ui_input_task, "ui_input", 6144, NULL, 5, NULL);  // responsive input
+    albumart_start(); // async album-art fetch/decode (own low-prio task)
 
     wifi_init();
 
@@ -471,6 +482,7 @@ void app_main(void)
             strlcpy(cur_id, dev.id, sizeof(cur_id));
             if (!pool_find(dev.id))
                 ui_set_now_playing(dev.friendly_name, "connecting...", "", -1);
+            ui_clear_art(); g_shown_art[0] = '\0';  // drop the old speaker's cover
             last_render = 0;                       // render as soon as it's live
         }
 

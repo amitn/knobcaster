@@ -34,6 +34,8 @@ typedef struct {
     bool supports_prev;
     bool supports_seek;
     bool has_media;         // this status carried a media/metadata block
+    char art_url[512];      // album-art image URL (metadata.images[0].url), "" if none
+                            // (Google/YouTube-Music signed thumbnail URLs get long)
 } cast_media_status_t;
 
 typedef struct {

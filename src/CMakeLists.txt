@@ -2,5 +2,5 @@
 idf_component_register(
     SRCS "app_main.c"
     INCLUDE_DIRS "." "../include"
-    REQUIRES wifi provisioning cast bsp ui nvs_flash esp_event esp_netif esp_hw_support esp_timer
+    REQUIRES wifi provisioning cast bsp ui albumart nvs_flash esp_event esp_netif esp_hw_support esp_timer
 )

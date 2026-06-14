@@ -5,8 +5,14 @@
 
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
+#include "esp_heap_caps.h"
 
 #include "font_dejavu_heb.h"
+
+// Exported by LVGL (lv_image_cache.c) but not surfaced through lvgl.h in this
+// build. We reuse one static image descriptor for the art, so its cache entry
+// must be dropped before repointing it at a new buffer (cache is keyed by src).
+extern void lv_image_cache_drop(const void *src);
 
 // Tiny-TTF fonts rendered from the embedded DejaVu subset (Latin + Hebrew), so
 // non-Latin song titles render instead of tofu boxes. One TTF, two sizes.
@@ -22,6 +28,11 @@ static lv_obj_t *s_hint_lbl;
 static lv_obj_t *s_wifi_lbl;   // Wi-Fi status icon (top)
 static lv_obj_t *s_prev_btn, *s_play_btn, *s_next_btn;
 static lv_obj_t *s_play_lbl;   // label inside the play/pause button
+
+// Album-art background image + its decoded RGB565 buffer (owned here).
+static lv_obj_t      *s_art_img;
+static lv_image_dsc_t s_art_dsc;
+static void          *s_art_buf;
 
 // Per-device volume-arc color (set by ui_set_volume_color). Mute overrides it
 // with red; unmuting restores this. Default blue until a device is selected.
@@ -94,6 +105,14 @@ void ui_init(void)
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
     lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(scr, swipe_cb, LV_EVENT_GESTURE, NULL);
+
+    // Album-art background (created first => behind everything). Dimmed so the
+    // white now-playing text stays readable; hidden until art arrives.
+    s_art_img = lv_image_create(scr);
+    lv_obj_center(s_art_img);
+    lv_obj_add_flag(s_art_img, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_art_img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_image_opa(s_art_img, 90, 0);   // ~35%
 
     // Volume ring around the round display.
     s_vol_arc = lv_arc_create(scr);
@@ -188,6 +207,40 @@ void ui_set_volume_color(uint32_t rgb)
     s_vol_color = rgb;
     if (!s_muted)   // muted shows red; apply the device color only when unmuted
         lv_obj_set_style_arc_color(s_vol_arc, lv_color_hex(rgb), LV_PART_INDICATOR);
+    lvgl_port_unlock();
+}
+
+void ui_set_art(void *rgb565, int w, int h)
+{
+    if (!rgb565 || w <= 0 || h <= 0) return;
+    lvgl_port_lock(0);
+
+    if (s_art_buf) lv_image_cache_drop(&s_art_dsc);   // drop the old decoded entry
+    void *old = s_art_buf;
+    s_art_buf = rgb565;
+
+    s_art_dsc.header.magic  = LV_IMAGE_HEADER_MAGIC;
+    s_art_dsc.header.cf     = LV_COLOR_FORMAT_RGB565;
+    s_art_dsc.header.w      = w;
+    s_art_dsc.header.h      = h;
+    s_art_dsc.header.stride = w * 2;
+    s_art_dsc.data          = rgb565;
+    s_art_dsc.data_size     = (uint32_t)w * h * 2;
+    lv_image_set_src(s_art_img, &s_art_dsc);
+
+    // Scale so the shorter side covers the 360px screen (fill, centered).
+    int32_t scale = (360 * 256) / (w < h ? w : h);
+    lv_image_set_scale(s_art_img, scale);
+    lv_obj_remove_flag(s_art_img, LV_OBJ_FLAG_HIDDEN);
+
+    lvgl_port_unlock();
+    if (old) heap_caps_free(old);   // safe: LVGL isn't mid-draw under the lock
+}
+
+void ui_clear_art(void)
+{
+    lvgl_port_lock(0);
+    lv_obj_add_flag(s_art_img, LV_OBJ_FLAG_HIDDEN);
     lvgl_port_unlock();
 }
 

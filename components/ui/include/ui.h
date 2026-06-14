@@ -24,6 +24,13 @@ void ui_set_muted(bool muted);
 // a unique, stable color. Applies immediately unless currently muted (red).
 void ui_set_volume_color(uint32_t rgb);
 
+// Album art: show a decoded RGB565 image as a dimmed background behind the
+// now-playing text. The UI TAKES OWNERSHIP of `rgb565` and frees the previously
+// shown buffer. Thread-safe. ui_clear_art() hides the art. Both are safe to call
+// from a worker task (see the albumart component).
+void ui_set_art(void *rgb565, int w, int h);
+void ui_clear_art(void);
+
 // Wi-Fi status indicator (top of the now-playing screen): green/white when
 // connected, dim red when not.
 void ui_set_wifi(bool connected);
