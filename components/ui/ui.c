@@ -12,12 +12,24 @@ static lv_obj_t *s_subtitle_lbl;
 static lv_obj_t *s_vol_arc;
 static lv_obj_t *s_hint_lbl;
 
+// Pending swipe direction, consumed by ui_take_swipe().
+static volatile int s_swipe;
+
+static void swipe_cb(lv_event_t *e)
+{
+    (void)e;
+    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+    if (dir == LV_DIR_LEFT)       s_swipe = +1;  // next device
+    else if (dir == LV_DIR_RIGHT) s_swipe = -1;  // previous device
+}
+
 void ui_init(void)
 {
     lvgl_port_lock(0);
 
     lv_obj_t *scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+    lv_obj_add_event_cb(scr, swipe_cb, LV_EVENT_GESTURE, NULL);
 
     // Volume ring around the round display.
     s_vol_arc = lv_arc_create(scr);
@@ -72,4 +84,11 @@ void ui_set_now_playing(const char *device, const char *title,
     if (subtitle) lv_label_set_text(s_subtitle_lbl, subtitle);
     if (volume_pct >= 0) lv_arc_set_value(s_vol_arc, volume_pct);
     lvgl_port_unlock();
+}
+
+int ui_take_swipe(void)
+{
+    int v = s_swipe;
+    s_swipe = 0;
+    return v;
 }

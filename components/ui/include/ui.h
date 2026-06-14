@@ -14,6 +14,10 @@ void ui_init(void);
 void ui_set_now_playing(const char *device, const char *title,
                         const char *subtitle, int volume_pct);
 
+// Consume a pending horizontal swipe: +1 = swipe left (next device),
+// -1 = swipe right (previous device), 0 = none.
+int ui_take_swipe(void);
+
 #ifdef __cplusplus
 }
 #endif

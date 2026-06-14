@@ -45,21 +45,46 @@ static const char *player_state_str(cast_player_state_t st)
     }
 }
 
-// Open a session to a device and stream its now-playing + volume to the log
-// until the connection drops. (UI + multi-device control come in later
-// milestones; this validates the M3 read path.)
-static void run_session(const cast_device_t *dev)
+// Discovered devices and the currently-selected one (swipe changes g_active).
+static cast_device_t g_devices[CAST_MAX_DEVICES];
+static int           g_count;
+static int           g_active;
+
+typedef enum { SESSION_CLOSED = 0, SESSION_SWITCHED = 1 } session_result_t;
+
+// Open a session to the active device and stream its now-playing to the screen,
+// handling knob (volume / play-pause) and swipe (switch device). Returns
+// SESSION_SWITCHED if the user swiped (g_active already advanced — reopen), or
+// SESSION_CLOSED if the connection dropped.
+static session_result_t run_session(void)
 {
-    ESP_LOGI(TAG, "opening session to %s (" IPSTR ")...",
+    const cast_device_t *dev = &g_devices[g_active];
+    ESP_LOGI(TAG, "session -> [%d/%d] %s (" IPSTR ")", g_active + 1, g_count,
              dev->friendly_name, IP2STR(&dev->ip));
+    ui_set_now_playing(dev->friendly_name, "connecting...", "", -1);
+
     cast_session_t *s = cast_session_open(dev);
-    if (!s) { ESP_LOGW(TAG, "session open failed"); return; }
+    if (!s) {
+        ESP_LOGW(TAG, "session open failed");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        return SESSION_CLOSED;
+    }
 
     int64_t last_log = 0;
     for (;;) {
         if (!cast_session_poll(s, 100)) {
             ESP_LOGW(TAG, "session closed");
-            break;
+            cast_session_close(s);
+            return SESSION_CLOSED;
+        }
+
+        // Swipe left/right -> switch active device (immediate reconnect).
+        int sw = ui_take_swipe();
+        if (sw != 0 && g_count > 1) {
+            g_active = (g_active + sw + g_count) % g_count;
+            ESP_LOGI(TAG, "swipe %s -> device %d", sw > 0 ? "next" : "prev", g_active);
+            cast_session_close(s);
+            return SESSION_SWITCHED;
         }
 
         // Knob rotation -> volume (optimistic; arc follows immediately).
@@ -90,7 +115,6 @@ static void run_session(const cast_device_t *dev)
                                m.subtitle, vol_pct);
         }
     }
-    cast_session_close(s);
 }
 
 static void init_nvs(void)
@@ -126,32 +150,37 @@ void app_main(void)
 
     cast_discovery_init();
 
-    // Periodically discover Cast devices and log them. (Cast connection /
-    // now-playing / control and the LVGL UI come in later milestones.)
-    static cast_device_t devices[CAST_MAX_DEVICES];
     for (;;) {
         if (!wifi_is_connected()) {
             ESP_LOGI(TAG, "Wi-Fi down, waiting to reconnect...");
-            vTaskDelay(pdMS_TO_TICKS(5000));
+            ui_set_now_playing("Cast Knob", "Wi-Fi...", "", -1);
+            vTaskDelay(pdMS_TO_TICKS(3000));
             continue;
         }
 
-        int n = cast_discovery_scan(devices, CAST_MAX_DEVICES, 3000);
+        g_count = cast_discovery_scan(g_devices, CAST_MAX_DEVICES, 3000);
         ESP_LOGI(TAG, "discovered %d Cast device(s)  [heap=%" PRIu32 "B psram=%dB]",
-                 n, esp_get_free_heap_size(),
+                 g_count, esp_get_free_heap_size(),
                  (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-        for (int i = 0; i < n; i++) {
+        for (int i = 0; i < g_count; i++) {
             ESP_LOGI(TAG, "  [%d] %-24s %-20s " IPSTR ":%u%s",
-                     i, devices[i].friendly_name, devices[i].model,
-                     IP2STR(&devices[i].ip), devices[i].port,
-                     devices[i].is_group ? " (group)" : "");
+                     i, g_devices[i].friendly_name, g_devices[i].model,
+                     IP2STR(&g_devices[i].ip), g_devices[i].port,
+                     g_devices[i].is_group ? " (group)" : "");
         }
 
-        // Stream the first device's now-playing until its connection drops,
-        // then rescan. (Device selection / UI arrive in later milestones.)
-        if (n > 0) {
-            run_session(&devices[0]);
+        if (g_count == 0) {
+            ui_set_now_playing("Cast Knob", "no speakers found", "swipe = device", -1);
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            continue;
         }
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        if (g_active >= g_count) g_active = 0;
+
+        // Run the active device; on swipe, reopen the newly-selected device
+        // immediately (no rescan). Only a dropped connection breaks out to rescan.
+        while (run_session() == SESSION_SWITCHED) {
+            /* g_active updated; reopen */
+        }
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }

@@ -53,8 +53,9 @@ Cast protocol) before polishing UX.
 - [ ] Volume debounce/reconcile; mute (long-press); supported-commands gating
 
 ## M5 — Multi-device UX
-- [ ] Switch active device (swipe / list)
-- [ ] Device-list overlay with cached per-device state
+- [x] Switch active device via **swipe left/right** (LVGL gesture → `ui_take_swipe`;
+      `run_session` reopens the new device without rescanning) — built
+- [ ] Device-list overlay (tap center) with cached per-device state
 - [ ] Warm-session LRU for instant switching
 - [ ] Cast **group** handling (group vs member volume)
 
