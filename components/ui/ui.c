@@ -41,6 +41,7 @@ void ui_init(void)
     lv_arc_set_value(s_vol_arc, 0);
     lv_obj_remove_style(s_vol_arc, NULL, LV_PART_KNOB);
     lv_obj_clear_flag(s_vol_arc, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_arc_color(s_vol_arc, lv_color_hex(0x1E88E5), LV_PART_INDICATOR);
 
     // Device name (top).
     s_device_lbl = lv_label_create(scr);
@@ -83,6 +84,15 @@ void ui_set_now_playing(const char *device, const char *title,
     if (title)    lv_label_set_text(s_title_lbl, title);
     if (subtitle) lv_label_set_text(s_subtitle_lbl, subtitle);
     if (volume_pct >= 0) lv_arc_set_value(s_vol_arc, volume_pct);
+    lvgl_port_unlock();
+}
+
+void ui_set_muted(bool muted)
+{
+    lvgl_port_lock(0);
+    lv_obj_set_style_arc_color(s_vol_arc,
+        muted ? lv_color_hex(0xCC3333) : lv_color_hex(0x1E88E5),
+        LV_PART_INDICATOR);
     lvgl_port_unlock();
 }
 

@@ -4,6 +4,7 @@
 // heartbeat. Display/LVGL HAL and the Cast layer are added in later milestones
 // (see docs/06-roadmap.md).
 #include <inttypes.h>
+#include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -49,6 +50,7 @@ static const char *player_state_str(cast_player_state_t st)
 static cast_device_t g_devices[CAST_MAX_DEVICES];
 static int           g_count;
 static int           g_active;
+static char          g_active_id[CAST_ID_LEN];  // sticky selection across rescans
 
 typedef enum { SESSION_CLOSED = 0, SESSION_SWITCHED = 1 } session_result_t;
 
@@ -118,6 +120,7 @@ static session_result_t run_session(void)
             ui_set_now_playing(dev->friendly_name,
                                m.title[0] ? m.title : player_state_str(m.state),
                                m.subtitle, vol_pct);
+            ui_set_muted(v.muted);
         }
     }
 }
@@ -179,13 +182,22 @@ void app_main(void)
             vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }
-        if (g_active >= g_count) g_active = 0;
+
+        // Sticky selection: keep the same device active across rescans (the
+        // list may reorder) by matching its id; default to the first device.
+        g_active = 0;
+        if (g_active_id[0]) {
+            for (int i = 0; i < g_count; i++) {
+                if (strcmp(g_devices[i].id, g_active_id) == 0) { g_active = i; break; }
+            }
+        }
 
         // Run the active device; on swipe, reopen the newly-selected device
         // immediately (no rescan). Only a dropped connection breaks out to rescan.
         while (run_session() == SESSION_SWITCHED) {
             /* g_active updated; reopen */
         }
+        strlcpy(g_active_id, g_devices[g_active].id, sizeof(g_active_id));
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
