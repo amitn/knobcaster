@@ -4,7 +4,6 @@
 // heartbeat. Display/LVGL HAL and the Cast layer are added in later milestones
 // (see docs/06-roadmap.md).
 #include <inttypes.h>
-#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -157,28 +156,20 @@ static warm_t *pool_get(const cast_device_t *dev)
     return e;
 }
 
-// A stable, vivid color (0xRRGGBB) unique-ish to a device id: hash the id to a
-// hue, then HSV->RGB at fixed saturation/value so it pops on the black screen.
-static uint32_t color_for_id(const char *id)
+// Pick a vivid, well-separated color (0xRRGGBB) for a speaker by hashing its
+// name into a fixed 16-color palette — distinct enough to tell speakers apart
+// at a glance (a continuous hue hash produced too-similar neighbors).
+static uint32_t color_for_name(const char *name)
 {
-    uint32_t hash = 2166136261u;                       // FNV-1a
-    for (const char *p = id; *p; p++) hash = (hash ^ (uint8_t)*p) * 16777619u;
-
-    float h = (hash % 360) / 60.0f;                    // hue sector 0..6
-    const float s = 0.70f, v = 1.0f;
-    float c = v * s, x = c * (1.0f - fabsf(fmodf(h, 2.0f) - 1.0f)), m = v - c;
-    float r = 0, g = 0, b = 0;
-    switch ((int)h) {
-        case 0:  r = c; g = x;        break;
-        case 1:  r = x; g = c;        break;
-        case 2:  g = c; b = x;        break;
-        case 3:  g = x; b = c;        break;
-        case 4:  r = x;        b = c; break;
-        default: r = c;        b = x; break;
-    }
-    uint8_t R = (uint8_t)((r + m) * 255), G = (uint8_t)((g + m) * 255),
-            B = (uint8_t)((b + m) * 255);
-    return ((uint32_t)R << 16) | ((uint32_t)G << 8) | B;
+    static const uint32_t palette[16] = {
+        0xFF3B30, 0xFF9500, 0xFFD60A, 0x9BE000,  // red, orange, yellow, lime
+        0x34C759, 0x00C7BE, 0x32ADE6, 0x0A84FF,  // green, teal, sky, blue
+        0x5E5CE6, 0xBF5AF2, 0xFF2D9B, 0xFF6482,  // indigo, violet, magenta, rose
+        0x00E0A8, 0x64D2FF, 0xFF5E3A, 0xC0FF3E,  // aqua, lightblue, coral, chartreuse
+    };
+    uint32_t hash = 2166136261u;                 // FNV-1a
+    for (const char *p = name; *p; p++) hash = (hash ^ (uint8_t)*p) * 16777619u;
+    return palette[hash % 16];
 }
 
 // Index of a device id in g_devices (-1 if gone). Caller holds g_state_mtx.
@@ -208,7 +199,7 @@ static void render_session(warm_t *e, bool active)
     ESP_LOGI(TAG, "[%s] %-8s  \"%s\" - \"%s\"  vol=%d%%%s",
              m.app_name[0] ? m.app_name : "-", player_state_str(m.state),
              m.title, m.subtitle, vol_pct, v.muted ? " (muted)" : "");
-    ui_set_volume_color(color_for_id(e->id));   // unique per-speaker arc color
+    ui_set_volume_color(color_for_name(name));   // distinct per-speaker arc color
     ui_set_now_playing(name, m.title[0] ? m.title : player_state_str(m.state),
                        m.subtitle, vol_pct);
     ui_set_muted(v.muted);
@@ -288,14 +279,11 @@ static void ui_input_task(void *arg)
             state_lock();
             int n = g_count;
             int idx = n ? (((g_active + sw) % n) + n) % n : 0;
-            char name[CAST_NAME_LEN] = {0}, id[CAST_ID_LEN] = {0};
-            if (n) {
-                strlcpy(name, g_devices[idx].friendly_name, sizeof(name));
-                strlcpy(id, g_devices[idx].id, sizeof(id));
-            }
+            char name[CAST_NAME_LEN] = {0};
+            if (n) strlcpy(name, g_devices[idx].friendly_name, sizeof(name));
             state_unlock();
             if (n) {
-                ui_set_volume_color(color_for_id(id));
+                ui_set_volume_color(color_for_name(name));
                 ui_set_now_playing(name, "connecting...", "", -1);
             }
             cmd_send(CMD_SWIPE, sw);
@@ -310,12 +298,11 @@ static void ui_input_task(void *arg)
                     // Indicate the chosen speaker immediately if it's a switch.
                     state_lock();
                     bool diff = (chosen != g_active);
-                    char name[CAST_NAME_LEN] = {0}, id[CAST_ID_LEN] = {0};
+                    char name[CAST_NAME_LEN] = {0};
                     strlcpy(name, g_devices[chosen].friendly_name, sizeof(name));
-                    strlcpy(id, g_devices[chosen].id, sizeof(id));
                     state_unlock();
                     if (diff) {
-                        ui_set_volume_color(color_for_id(id));
+                        ui_set_volume_color(color_for_name(name));
                         ui_set_now_playing(name, "connecting...", "", -1);
                     }
                     cmd_send(CMD_SELECT, chosen);
