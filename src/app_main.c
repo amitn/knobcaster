@@ -257,14 +257,33 @@ static void ui_input_task(void *arg)
         if (t != UI_TRANSPORT_NONE) cmd_send(CMD_TRANSPORT, t);
 
         int sw = ui_take_swipe();
-        if (sw != 0) cmd_send(CMD_SWIPE, sw);
+        if (sw != 0) {
+            // Show the speaker we're swiping to right away (net task confirms).
+            state_lock();
+            int n = g_count;
+            int idx = n ? (((g_active + sw) % n) + n) % n : 0;
+            char name[CAST_NAME_LEN] = {0};
+            if (n) strlcpy(name, g_devices[idx].friendly_name, sizeof(name));
+            state_unlock();
+            if (n) ui_set_now_playing(name, "connecting...", "", -1);
+            cmd_send(CMD_SWIPE, sw);
+        }
 
         // Tap device name or press knob -> device list (dial navigates, press selects).
         if (ui_take_center_tap() || knob_take_pressed()) {
             state_lock(); int n = g_count; state_unlock();
             if (n > 1) {
                 int chosen = device_list_overlay();
-                if (chosen >= 0) cmd_send(CMD_SELECT, chosen);
+                if (chosen >= 0) {
+                    // Indicate the chosen speaker immediately if it's a switch.
+                    state_lock();
+                    bool diff = (chosen != g_active);
+                    char name[CAST_NAME_LEN] = {0};
+                    strlcpy(name, g_devices[chosen].friendly_name, sizeof(name));
+                    state_unlock();
+                    if (diff) ui_set_now_playing(name, "connecting...", "", -1);
+                    cmd_send(CMD_SELECT, chosen);
+                }
             }
         }
     }
