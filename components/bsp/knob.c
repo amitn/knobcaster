@@ -15,17 +15,28 @@ static const char *TAG = "knob";
 static pcnt_unit_handle_t s_pcnt;
 static int                s_last_count;
 
-static volatile bool      s_pressed;
-static volatile int64_t   s_last_btn_us;   // debounce timestamp
+#define LONG_PRESS_US 600000   // hold >= 600ms => long press
+#define DEBOUNCE_US   20000
 
+static volatile bool      s_pressed;        // pending short press
+static volatile bool      s_long_pressed;   // pending long press
+static volatile int64_t   s_down_us;        // press-down timestamp (0 = up)
+static volatile int64_t   s_last_edge_us;   // debounce timestamp
+
+// Active-low button on an ANYEDGE interrupt: time the press and classify it as
+// short or long on release.
 static void IRAM_ATTR button_isr(void *arg)
 {
-    // Active-low: register a press on the falling edge, debounced ~30ms.
     int64_t now = esp_timer_get_time();
-    if (now - s_last_btn_us < 30000) return;
-    s_last_btn_us = now;
-    if (gpio_get_level(BOARD_PIN_BTN) == 0) {
-        s_pressed = true;
+    if (now - s_last_edge_us < DEBOUNCE_US) return;
+    s_last_edge_us = now;
+
+    if (gpio_get_level(BOARD_PIN_BTN) == 0) {   // pressed
+        s_down_us = now;
+    } else if (s_down_us != 0) {                // released
+        if (now - s_down_us >= LONG_PRESS_US) s_long_pressed = true;
+        else                                  s_pressed = true;
+        s_down_us = 0;
     }
 }
 
@@ -72,7 +83,7 @@ void knob_init(void)
         .pin_bit_mask = 1ULL << BOARD_PIN_BTN,
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
-        .intr_type = GPIO_INTR_NEGEDGE,
+        .intr_type = GPIO_INTR_ANYEDGE,
     };
     gpio_config(&btn);
     gpio_install_isr_service(0);
@@ -99,5 +110,12 @@ bool knob_take_pressed(void)
 {
     if (!s_pressed) return false;
     s_pressed = false;
+    return true;
+}
+
+bool knob_take_long_pressed(void)
+{
+    if (!s_long_pressed) return false;
+    s_long_pressed = false;
     return true;
 }

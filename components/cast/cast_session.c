@@ -20,6 +20,8 @@ struct cast_session {
     int64_t      last_ping_us;
     cast_media_status_t  media;
     cast_volume_status_t volume;
+    bool         vol_dirty;       // local volume change awaiting flush
+    int64_t      last_vol_send_us;
 };
 
 // --- small JSON helpers ------------------------------------------------------
@@ -81,8 +83,12 @@ static void handle_receiver_status(cast_session_t *s, cJSON *root)
     if (vol) {
         cJSON *level = cJSON_GetObjectItemCaseSensitive(vol, "level");
         cJSON *muted = cJSON_GetObjectItemCaseSensitive(vol, "muted");
-        if (cJSON_IsNumber(level)) s->volume.level = (float)level->valuedouble;
-        if (cJSON_IsBool(muted))   s->volume.muted = cJSON_IsTrue(muted);
+        // Reconcile: accept the device's level only when we have no local change
+        // in flight, so an external change is reflected but we don't snap back
+        // mid-turn.
+        if (cJSON_IsNumber(level) && !s->vol_dirty)
+            s->volume.level = (float)level->valuedouble;
+        if (cJSON_IsBool(muted)) s->volume.muted = cJSON_IsTrue(muted);
     }
 
     cJSON *apps = cJSON_GetObjectItemCaseSensitive(status, "applications");
@@ -187,6 +193,14 @@ bool cast_session_poll(cast_session_t *s, int timeout_ms)
         s->last_ping_us = now;
     }
 
+    // Flush a pending volume change at most ~16 Hz so a fast knob turn sends a
+    // few SET_VOLUMEs (with the latest target) instead of one per detent.
+    if (s->vol_dirty && (now - s->last_vol_send_us) >= 60000) {
+        s->vol_dirty = false;              // cleared before send so an echo reconciles
+        s->last_vol_send_us = now;
+        cast_session_set_volume(s, s->volume.level);
+    }
+
     cast_msg_t msg;
     cast_rx_t r = cast_conn_recv(s->conn, &msg, timeout_ms);
     if (r == CAST_RX_CLOSED) return false;
@@ -221,11 +235,12 @@ bool cast_session_set_volume(cast_session_t *s, float level)
 bool cast_session_step_volume(cast_session_t *s, float delta)
 {
     // Optimistically advance the local snapshot so repeated steps accumulate
-    // without waiting for the device's RECEIVER_STATUS echo.
+    // instantly; the actual SET_VOLUME is rate-limited in cast_session_poll().
     s->volume.level += delta;
     if (s->volume.level < 0.0f) s->volume.level = 0.0f;
     if (s->volume.level > 1.0f) s->volume.level = 1.0f;
-    return cast_session_set_volume(s, s->volume.level);
+    s->vol_dirty = true;
+    return true;
 }
 
 bool cast_session_set_muted(cast_session_t *s, bool muted)

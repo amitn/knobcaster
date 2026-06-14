@@ -14,8 +14,12 @@ void knob_init(void);
 // (positive = clockwise). Returns 0 if the knob hasn't moved.
 int knob_take_delta(void);
 
-// Consume a pending button press edge (active-low). Returns true once per press.
+// Consume a pending short button press (released before the long-press
+// threshold). Returns true once per press.
 bool knob_take_pressed(void);
+
+// Consume a pending long press (held past ~600 ms). Returns true once per press.
+bool knob_take_long_pressed(void);
 
 #ifdef __cplusplus
 }

@@ -49,8 +49,11 @@ Cast protocol) before polishing UX.
       toggle, stop, next, prev (QUEUE_UPDATE jump) — built, not device-tested
 - [x] Wire SET_VOLUME to knob rotation (optimistic; arc follows) — `run_session`
 - [x] Wire Play/Pause to knob press — `run_session`
+- [x] Volume debounce (~16 Hz flush of latest target) + reconcile (accept device
+      level only when no local change in flight) — `cast_session_poll`
+- [x] Mute via knob **long-press** (~600 ms) — `knob_take_long_pressed` + `set_muted`
 - [ ] Stop/Next/Prev + device-switch via touch gestures (UI work, M5)
-- [ ] Volume debounce/reconcile; mute (long-press); supported-commands gating
+- [ ] Supported-commands gating in the UI
 
 ## M5 — Multi-device UX
 - [x] Switch active device via **swipe left/right** (LVGL gesture → `ui_take_swipe`;

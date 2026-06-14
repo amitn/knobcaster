@@ -94,10 +94,15 @@ static session_result_t run_session(void)
             cast_volume_status_t v; cast_session_get_volume(s, &v);
             ui_set_now_playing(NULL, NULL, NULL, (int)(v.level * 100 + 0.5f));
         }
-        // Knob press -> play/pause.
+        // Knob short press -> play/pause; long press -> mute toggle.
         if (knob_take_pressed()) {
             ESP_LOGI(TAG, "knob press -> toggle play/pause");
             cast_session_toggle_pause(s);
+        }
+        if (knob_take_long_pressed()) {
+            cast_volume_status_t v; cast_session_get_volume(s, &v);
+            ESP_LOGI(TAG, "knob long-press -> %s", v.muted ? "unmute" : "mute");
+            cast_session_set_muted(s, !v.muted);
         }
 
         int64_t now = esp_timer_get_time();
