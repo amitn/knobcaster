@@ -1,7 +1,9 @@
-// Rotary encoder via PCNT (x4 quadrature) + push button via GPIO ISR.
+// Rotary encoder via PCNT + push button via GPIO ISR.
 #include "knob.h"
 #include "board_pins.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "driver/pulse_cnt.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
@@ -9,11 +11,14 @@
 
 static const char *TAG = "knob";
 
-// PCNT counts per physical detent. This board's encoder appears to be ~1/detent.
-#define COUNTS_PER_DETENT 1
-
 static pcnt_unit_handle_t s_pcnt;
-static int                s_last_count;
+
+// This board's encoder pulses the PCNT count to +/-1 per detent and returns to 0
+// (it does NOT accumulate). A fast poll task counts each 0 -> +/-1 *entering*
+// transition as one detent (sign = direction) and ignores the settle back to 0,
+// so a detent nets +/-1 instead of cancelling out.
+static volatile int s_enc_accum;
+static int          s_enc_last;
 
 #define LONG_PRESS_US 600000   // hold >= 600ms => long press
 #define DEBOUNCE_US   20000
@@ -38,6 +43,20 @@ static void IRAM_ATTR button_isr(void *arg)
         if (now - s_down_us >= LONG_PRESS_US) s_long_pressed = true;
         else                                  s_pressed = true;
         s_down_us = 0;
+    }
+}
+
+// Fast poll: turn each PCNT 0 -> +/-1 transition into one accumulated detent.
+static void enc_task(void *arg)
+{
+    for (;;) {
+        int count = 0;
+        if (pcnt_unit_get_count(s_pcnt, &count) == ESP_OK) {
+            if (count >= 1 && s_enc_last < 1)        s_enc_accum += 1;   // CW detent
+            else if (count <= -1 && s_enc_last > -1) s_enc_accum -= 1;   // CCW detent
+            s_enc_last = count;
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
@@ -96,25 +115,17 @@ void knob_init(void)
     if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(e);
     gpio_isr_handler_add(BOARD_PIN_BTN, button_isr, NULL);
 
+    xTaskCreate(enc_task, "enc", 2560, NULL, 6, NULL);
+
     ESP_LOGI(TAG, "knob ready (A=%d B=%d btn=%d)",
              BOARD_PIN_ENC_A, BOARD_PIN_ENC_B, BOARD_PIN_BTN);
 }
 
 int knob_take_delta(void)
 {
-    int count = 0;
-    if (pcnt_unit_get_count(s_pcnt, &count) != ESP_OK) count = s_last_count;
-    if (count != s_last_count) ESP_LOGI(TAG, "enc raw count=%d", count);  // DEBUG
-    int diff = count - s_last_count;
-    int detents = diff / COUNTS_PER_DETENT;
-    if (detents != 0) {
-        // Keep the sub-detent remainder so slow turns aren't lost.
-        s_last_count += detents * COUNTS_PER_DETENT;
-    }
-    // Fold in any serial-injected detents.
-    int inj = s_injected_delta;
-    if (inj) { s_injected_delta = 0; detents += inj; }
-    return detents;
+    int d = s_enc_accum;        s_enc_accum = 0;
+    int inj = s_injected_delta; s_injected_delta = 0;
+    return d + inj;
 }
 
 void knob_inject_delta(int detents) { s_injected_delta += detents; }
