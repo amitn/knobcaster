@@ -17,6 +17,16 @@ from PIL import Image
 W, H = 360, 360
 
 
+def draw_progress(done, total, width=32):
+    frac = done / total if total else 1.0
+    filled = int(frac * width)
+    sys.stderr.write(
+        "\r[%s%s] %5.1f%% (%d/%d KiB)"
+        % ("#" * filled, "." * (width - filled), frac * 100, done // 1024, total // 1024)
+    )
+    sys.stderr.flush()
+
+
 def find_port():
     if os.environ.get("FBDUMP_PORT"):
         return os.environ["FBDUMP_PORT"]
@@ -47,11 +57,15 @@ def main():
             sys.exit(f"timeout waiting for framebuffer header on {port}")
 
     payload = buf[buf.index(header) + len(header):]
+    draw_progress(len(payload), need)
     while len(payload) < need:
         chunk = ser.read(need - len(payload))
         if not chunk:
+            sys.stderr.write("\n")
             sys.exit(f"short read: got {len(payload)}/{need} bytes")
         payload += chunk
+        draw_progress(len(payload), need)
+    sys.stderr.write("\n")
     ser.close()
 
     arr = np.frombuffer(payload[:need], dtype="<u2").reshape(H, W)

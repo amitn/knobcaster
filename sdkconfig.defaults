@@ -40,6 +40,10 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_LV_USE_QRCODE=y
 # --- LVGL: enable lv_snapshot (serial framebuffer dump, `just shot`) ---
 CONFIG_LV_USE_SNAPSHOT=y
+# Use the C-stdlib allocator (ESP heap, large allocs -> PSRAM) instead of LVGL's
+# 64 KB builtin pool, so a full-screen (360x360x2 = 259 KB) snapshot can allocate.
+# CONFIG_LV_USE_BUILTIN_MALLOC is not set
+CONFIG_LV_USE_CLIB_MALLOC=y
 
 # --- Compiler ---
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
