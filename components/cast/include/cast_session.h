@@ -52,6 +52,20 @@ bool cast_session_poll(cast_session_t *s, int timeout_ms);
 void cast_session_get_media(cast_session_t *s, cast_media_status_t *out);
 void cast_session_get_volume(cast_session_t *s, cast_volume_status_t *out);
 
+// --- transport controls (M4) -------------------------------------------------
+// All return false if the command could not be sent (e.g. no media session yet).
+// Device-level volume (RECEIVER namespace):
+bool cast_session_set_volume(cast_session_t *s, float level);   // 0.0 .. 1.0
+bool cast_session_step_volume(cast_session_t *s, float delta);  // relative, clamped
+bool cast_session_set_muted(cast_session_t *s, bool muted);
+// Media transport (MEDIA namespace, needs an active media session):
+bool cast_session_play(cast_session_t *s);
+bool cast_session_pause(cast_session_t *s);
+bool cast_session_toggle_pause(cast_session_t *s);  // play/pause by current state
+bool cast_session_stop(cast_session_t *s);
+bool cast_session_next(cast_session_t *s);
+bool cast_session_prev(cast_session_t *s);
+
 #ifdef __cplusplus
 }
 #endif

@@ -203,3 +203,73 @@ void cast_session_get_volume(cast_session_t *s, cast_volume_status_t *out)
 {
     *out = s->volume;
 }
+
+// --- transport controls ------------------------------------------------------
+
+bool cast_session_set_volume(cast_session_t *s, float level)
+{
+    if (level < 0.0f) level = 0.0f;
+    if (level > 1.0f) level = 1.0f;
+    char p[96];
+    snprintf(p, sizeof(p),
+             "{\"type\":\"SET_VOLUME\",\"volume\":{\"level\":%.3f},\"requestId\":%d}",
+             level, ++s->req_id);
+    return cast_conn_send(s->conn, CAST_SRC_DEFAULT, CAST_DST_RECEIVER,
+                          CAST_NS_RECEIVER, p);
+}
+
+bool cast_session_step_volume(cast_session_t *s, float delta)
+{
+    // Optimistically advance the local snapshot so repeated steps accumulate
+    // without waiting for the device's RECEIVER_STATUS echo.
+    s->volume.level += delta;
+    if (s->volume.level < 0.0f) s->volume.level = 0.0f;
+    if (s->volume.level > 1.0f) s->volume.level = 1.0f;
+    return cast_session_set_volume(s, s->volume.level);
+}
+
+bool cast_session_set_muted(cast_session_t *s, bool muted)
+{
+    char p[96];
+    snprintf(p, sizeof(p),
+             "{\"type\":\"SET_VOLUME\",\"volume\":{\"muted\":%s},\"requestId\":%d}",
+             muted ? "true" : "false", ++s->req_id);
+    return cast_conn_send(s->conn, CAST_SRC_DEFAULT, CAST_DST_RECEIVER,
+                          CAST_NS_RECEIVER, p);
+}
+
+// Send a simple media command that only needs {type, mediaSessionId}.
+static bool media_cmd(cast_session_t *s, const char *type)
+{
+    if (!s->transport_connected || s->media.media_session_id == 0) return false;
+    char p[128];
+    snprintf(p, sizeof(p),
+             "{\"type\":\"%s\",\"mediaSessionId\":%d,\"requestId\":%d}",
+             type, s->media.media_session_id, ++s->req_id);
+    return cast_conn_send(s->conn, CAST_SRC_DEFAULT, s->transport_id,
+                          CAST_NS_MEDIA, p);
+}
+
+// Next/Prev are QUEUE_UPDATE with a relative jump (portable across receivers).
+static bool queue_jump(cast_session_t *s, int jump)
+{
+    if (!s->transport_connected || s->media.media_session_id == 0) return false;
+    char p[128];
+    snprintf(p, sizeof(p),
+             "{\"type\":\"QUEUE_UPDATE\",\"mediaSessionId\":%d,\"jump\":%d,\"requestId\":%d}",
+             s->media.media_session_id, jump, ++s->req_id);
+    return cast_conn_send(s->conn, CAST_SRC_DEFAULT, s->transport_id,
+                          CAST_NS_MEDIA, p);
+}
+
+bool cast_session_play(cast_session_t *s)  { return media_cmd(s, "PLAY"); }
+bool cast_session_pause(cast_session_t *s) { return media_cmd(s, "PAUSE"); }
+bool cast_session_stop(cast_session_t *s)  { return media_cmd(s, "STOP"); }
+bool cast_session_next(cast_session_t *s)  { return queue_jump(s, 1); }
+bool cast_session_prev(cast_session_t *s)  { return queue_jump(s, -1); }
+
+bool cast_session_toggle_pause(cast_session_t *s)
+{
+    return (s->media.state == CAST_PLAYER_PLAYING) ? cast_session_pause(s)
+                                                   : cast_session_play(s);
+}

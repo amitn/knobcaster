@@ -41,10 +41,11 @@ Cast protocol) before polishing UX.
 > TLS handshake, framing, and payload shapes need on-device validation.
 
 ## M4 — Cast control path
-- [ ] SET_VOLUME from knob with debounce + reconcile
-- [ ] Play / Pause via knob press
-- [ ] Stop / Next / Prev via touch
-- [ ] Mute (long-press) and supported-commands gating
+- [x] Command API in `cast_session`: set/step volume, mute, play, pause,
+      toggle, stop, next, prev (QUEUE_UPDATE jump) — built, not device-tested
+- [ ] Wire SET_VOLUME to knob with debounce + reconcile (needs M1 encoder)
+- [ ] Wire Play/Pause to knob press; Stop/Next/Prev to touch (needs M1)
+- [ ] Mute (long-press) and supported-commands gating in the UI
 
 ## M5 — Multi-device UX
 - [ ] Switch active device (swipe / list)
