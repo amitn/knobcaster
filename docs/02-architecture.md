@@ -97,10 +97,11 @@ boot ─▶ wifi_init (STA)
         └─ connected ──▶ run app
         └─ failed/none ─▶ run_provisioning():
               wifi_start_ap("CastKnob-XXXX")     # open SoftAP @ 192.168.4.1, APSTA
-              prov_start()                        # esp_http_server
+              prov_start()                        # esp_http_server + captive DNS
               ui_prov_show(QR, ap)                # LCD shows a QR code
               ┌── phone scans QR ──▶ joins "CastKnob-XXXX"
-              │   opens 192.168.4.1 (wildcard handler serves the form on any URL)
+              │   captive-portal popup (DNS resolves everything -> 192.168.4.1;
+              │   wildcard GET serves the form on any URL)
               │   submits home SSID + password  (POST /save, url-decoded)
               └── prov_take_creds() ─▶ stop AP+server ─▶ wifi_connect_to()
                      connected ─▶ wifi_creds_save() to NVS ─▶ run app
@@ -114,8 +115,9 @@ boot ─▶ wifi_init (STA)
   on the next boot; the compiled `secrets.h` is only a fallback for dev.
 - **Status:** a Wi-Fi icon on the now-playing screen is green when connected, red
   when not (`ui_set_wifi`). A persistent drop at runtime re-opens the portal.
-- *Not a DNS captive portal yet* — auto-popup relies on the phone probing `/*`;
-  worst case the user opens `192.168.4.1` manually. A 53/udp DNS hijack is a TODO.
+- **Captive DNS:** a 53/udp responder (`dns_task`) answers every A query with
+  `192.168.4.1`, so the phone's connectivity check fails to the real internet and
+  auto-pops the setup page. AAAA/other queries get an empty answer.
 
 ## Connection strategy
 

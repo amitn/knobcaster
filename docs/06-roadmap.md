@@ -72,10 +72,10 @@ Cast protocol) before polishing UX.
 - [ ] Error/edge handling: device disappears, app stops, Wi-Fi drop
 - [ ] Boot time + memory budget pass
 - [ ] OTA updates (dual-app partitions already provisioned)
-- [x] **Wi-Fi provisioning** — SoftAP + on-LCD QR + web form (`192.168.4.1`),
-      creds saved to NVS, Wi-Fi status icon (`components/provisioning`, `wifi`,
+- [x] **Wi-Fi provisioning** — SoftAP + on-LCD QR + web form (`192.168.4.1`) +
+      captive-portal DNS (53/udp → 192.168.4.1, so the form auto-opens), creds
+      saved to NVS, Wi-Fi status icon (`components/provisioning`, `wifi`,
       `run_provisioning`); compiled `secrets.h` now optional — built
-- [ ] DNS captive-portal hijack (53/udp) so the form auto-opens after joining
 
 ## Open questions
 
