@@ -1,6 +1,7 @@
 // CST816 capacitive touch (I2C) -> LVGL pointer input device.
 #include "display.h"
 #include "board_pins.h"
+#include "board_i2c.h"
 
 #include "driver/i2c_master.h"
 #include "esp_lcd_panel_io.h"
@@ -15,17 +16,9 @@ bool touch_init(lv_display_t *disp)
 {
     ESP_LOGI(TAG, "init CST816 touch (I2C addr 0x%02X)", BOARD_TOUCH_ADDR);
 
-    // New I2C master bus (IDF v5.2+/6.0 driver).
-    const i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = BOARD_TOUCH_I2C_PORT,
-        .sda_io_num = BOARD_PIN_TOUCH_SDA,
-        .scl_io_num = BOARD_PIN_TOUCH_SCL,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-    i2c_master_bus_handle_t i2c_bus = NULL;
-    if (i2c_new_master_bus(&bus_cfg, &i2c_bus) != ESP_OK) {
+    // Shared I2C master bus (also used by the DRV2605 haptics).
+    i2c_master_bus_handle_t i2c_bus = board_i2c_bus();
+    if (!i2c_bus) {
         ESP_LOGE(TAG, "i2c bus init failed");
         return false;
     }

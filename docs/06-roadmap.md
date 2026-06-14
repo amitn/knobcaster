@@ -83,7 +83,9 @@ Cast protocol) before polishing UX.
       the on-screen transport button. (`run_session` → `device_list_overlay`)
 
 ## M6 — Polish & robustness
-- [ ] Haptics (DRV2605) on detents/press
+- [x] Haptics (DRV2605 @ I2C 0x5A): tactile click per encoder detent via a
+      worker task (`components/bsp/haptics.c`, shared I2C bus `board_i2c.c`) —
+      built, **needs on-device tuning** (ERM vs LRA actuator, effect/library)
 - [ ] Error/edge handling: device disappears, app stops, Wi-Fi drop
 - [ ] Boot time + memory budget pass
 - [ ] OTA updates (dual-app partitions already provisioned)

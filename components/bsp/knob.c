@@ -1,6 +1,7 @@
 // Rotary encoder via PCNT + push button via GPIO ISR.
 #include "knob.h"
 #include "board_pins.h"
+#include "haptics.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -61,6 +62,7 @@ static void enc_task(void *arg)
             } else if (armed) {
                 s_enc_accum += (count > 0) ? 1 : -1;   // sign = direction
                 armed = false;
+                haptics_click();   // tactile "detent" on a smooth encoder
             }
         }
         vTaskDelay(poll);

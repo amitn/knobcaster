@@ -27,6 +27,7 @@
 #include "cast_session.h"
 #include "display.h"
 #include "knob.h"
+#include "haptics.h"
 #include "fbdump.h"
 #include "ui.h"
 #include "albumart.h"
@@ -421,6 +422,7 @@ void app_main(void)
     lv_display_t *disp = display_init();
     touch_init(disp);
     knob_init();
+    haptics_start();   // DRV2605 tactile detents (shares the touch I2C bus)
     ui_init();
     fbdump_start();   // `just shot` -> screen.png
     xTaskCreate(ui_input_task, "ui_input", 6144, NULL, 5, NULL);  // responsive input
