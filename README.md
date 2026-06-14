@@ -30,12 +30,27 @@ global PlatformIO.
 
 ```bash
 just setup          # create .venv via uv, install pinned PlatformIO into it
-cp include/secrets.h.example include/secrets.h   # add your Wi-Fi creds
-just flash          # build + upload to the board
+just flash          # build + upload to the board (USB-C, S3 side — see below)
 just monitor        # watch serial logs
 ```
 
 Run `just` with no arguments to list every recipe.
+
+### Wi-Fi setup (on-device, no rebuild)
+
+On first boot (no saved network) the screen shows a **QR code**. Scan it to join
+the device's `CastKnob-XXXX` setup network, then a web form (at `192.168.4.1`)
+opens — enter your home Wi-Fi name + password and **Save & Connect**. The creds
+are stored in NVS and reused on every boot; a Wi-Fi icon shows connection status.
+(For development you can instead `cp include/secrets.h.example include/secrets.h`
+to compile creds in.)
+
+### Flashing note — dual-MCU USB
+
+The board muxes one USB-C between the **ESP32-S3** (native USB, `/dev/ttyACM*`)
+and a secondary **ESP32** (CH340 bridge, `/dev/ttyUSB*`). `platformio.ini` pins
+uploads to the `ttyACM*` (S3) side. If a flash hits the wrong chip, replug USB or
+enter download mode (hold **BOOT**, tap **RESET**, release **BOOT**).
 
 ## How it works (one paragraph)
 

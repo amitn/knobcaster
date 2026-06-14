@@ -67,6 +67,25 @@ swiping cycles through.
 - Shows per-device state if available (lazy/cached — see connection strategy).
 - Cast **groups** badged distinctly.
 
+### D. Wi-Fi setup (provisioning)
+
+Shown on first boot or when Wi-Fi can't connect (see
+[02-architecture.md](02-architecture.md#wi-fi-provisioning-softap--qr--web-form)):
+
+```
+        ╭───────────────────────╮
+        │     Set up Wi-Fi      │
+        │     ▛▀▀▜  ▛▀▜ ▛▜       │   QR (scan to join CastKnob-XXXX)
+        │     ▙▄▄▟  ▙▄▟ ▙▟       │
+        │  scan, or join        │
+        │  CastKnob-A1B2         │
+        │  then open 192.168.4.1 │
+        ╰───────────────────────╯
+```
+
+A small **Wi-Fi icon** at the top of the now-playing screen shows connection
+status (green = connected, red = not).
+
 ### C. Status / transient states
 
 - **Booting / Wi-Fi**: spinner + "Connecting to <SSID>…".

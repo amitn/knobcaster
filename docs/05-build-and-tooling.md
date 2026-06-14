@@ -36,13 +36,21 @@ so they can never accidentally hit a system PlatformIO.
 
 ## Wi-Fi credentials
 
+**Default: none needed.** On first boot the device provisions over the air — it
+opens a `CastKnob-XXXX` SoftAP and shows a QR on the LCD; scan it, open
+`192.168.4.1`, and submit your home Wi-Fi. Creds are saved to NVS (see
+[02-architecture.md](02-architecture.md#wi-fi-provisioning-softap--qr--web-form)).
+
+For development you can compile creds in instead (skips provisioning):
+
 ```bash
 cp include/secrets.h.example include/secrets.h
 $EDITOR include/secrets.h      # set WIFI_SSID / WIFI_PASS
 ```
 
-`include/secrets.h` is gitignored. (Later we can move provisioning to BLE/captive
-portal; for bring-up, compiled-in creds are simplest.)
+`include/secrets.h` is gitignored. NVS creds take precedence over compiled ones.
+To force re-provisioning, erase NVS: `uv run pio run -t erase` (or clear the
+saved network).
 
 ## Everyday commands
 

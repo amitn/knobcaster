@@ -19,6 +19,15 @@ void ui_set_now_playing(const char *device, const char *title,
 // Reflect mute state on the volume arc (red when muted). Thread-safe.
 void ui_set_muted(bool muted);
 
+// Wi-Fi status indicator (top of the now-playing screen): green/white when
+// connected, dim red when not.
+void ui_set_wifi(bool connected);
+
+// Show/hide the Wi-Fi provisioning screen: a QR code (qr_text, e.g. a WIFI:
+// join string) plus the AP name and a hint to open 192.168.4.1.
+void ui_prov_show(const char *qr_text, const char *ap_name);
+void ui_prov_hide(void);
+
 // Reflect play state on the center transport button (play vs pause icon).
 void ui_set_playing(bool playing);
 

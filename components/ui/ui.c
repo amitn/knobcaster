@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
@@ -11,6 +12,7 @@ static lv_obj_t *s_title_lbl;
 static lv_obj_t *s_subtitle_lbl;
 static lv_obj_t *s_vol_arc;
 static lv_obj_t *s_hint_lbl;
+static lv_obj_t *s_wifi_lbl;   // Wi-Fi status icon (top)
 static lv_obj_t *s_prev_btn, *s_play_btn, *s_next_btn;
 static lv_obj_t *s_play_lbl;   // label inside the play/pause button
 
@@ -91,6 +93,12 @@ void ui_init(void)
     lv_obj_clear_flag(s_vol_arc, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_arc_color(s_vol_arc, lv_color_hex(0x1E88E5), LV_PART_INDICATOR);
 
+    // Wi-Fi status icon (very top).
+    s_wifi_lbl = lv_label_create(scr);
+    lv_label_set_text(s_wifi_lbl, LV_SYMBOL_WIFI);
+    lv_obj_set_style_text_color(s_wifi_lbl, lv_color_hex(0xCC3333), 0);
+    lv_obj_align(s_wifi_lbl, LV_ALIGN_TOP_MID, 0, 40);
+
     // Device name (top).
     s_device_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(s_device_lbl, lv_color_white(), 0);
@@ -163,6 +171,63 @@ ui_transport_t ui_take_transport(void)
     ui_transport_t v = s_transport;
     s_transport = UI_TRANSPORT_NONE;
     return v;
+}
+
+void ui_set_wifi(bool connected)
+{
+    lvgl_port_lock(0);
+    if (s_wifi_lbl)
+        lv_obj_set_style_text_color(s_wifi_lbl,
+            connected ? lv_color_hex(0x33CC66) : lv_color_hex(0xCC3333), 0);
+    lvgl_port_unlock();
+}
+
+// --- Wi-Fi provisioning screen -----------------------------------------------
+
+static lv_obj_t *s_prov_overlay;
+
+void ui_prov_show(const char *qr_text, const char *ap_name)
+{
+    lvgl_port_lock(0);
+    if (s_prov_overlay) lv_obj_delete(s_prov_overlay);
+
+    s_prov_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(s_prov_overlay, 360, 360);
+    lv_obj_center(s_prov_overlay);
+    lv_obj_set_style_bg_color(s_prov_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_prov_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_prov_overlay, 0, 0);
+    lv_obj_clear_flag(s_prov_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(s_prov_overlay);
+    lv_label_set_text(title, "Set up Wi-Fi");
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 36);
+
+    // QR code (scan to join the setup network).
+    lv_obj_t *qr = lv_qrcode_create(s_prov_overlay);
+    lv_qrcode_set_size(qr, 170);
+    lv_qrcode_set_dark_color(qr, lv_color_black());
+    lv_qrcode_set_light_color(qr, lv_color_white());
+    lv_qrcode_update(qr, qr_text, strlen(qr_text));
+    lv_obj_set_style_border_color(qr, lv_color_white(), 0);
+    lv_obj_set_style_border_width(qr, 6, 0);     // quiet zone
+    lv_obj_center(qr);
+
+    lv_obj_t *hint = lv_label_create(s_prov_overlay);
+    lv_label_set_text_fmt(hint, "scan, or join\n%s\nthen open 192.168.4.1", ap_name);
+    lv_obj_set_style_text_color(hint, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -28);
+
+    lvgl_port_unlock();
+}
+
+void ui_prov_hide(void)
+{
+    lvgl_port_lock(0);
+    if (s_prov_overlay) { lv_obj_delete(s_prov_overlay); s_prov_overlay = NULL; }
+    lvgl_port_unlock();
 }
 
 void ui_set_transport_enabled(bool prev, bool playpause, bool next)

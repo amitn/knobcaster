@@ -36,5 +36,8 @@ CONFIG_LWIP_IPV4=y
 # --- Main task stack (LVGL + app init) ---
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
+# --- LVGL: enable the QR code widget (Wi-Fi provisioning screen) ---
+CONFIG_LV_USE_QRCODE=y
+
 # --- Compiler ---
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y

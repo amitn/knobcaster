@@ -10,7 +10,7 @@ Cast protocol) before polishing UX.
 - [x] Pin map confirmed against EmbeddedWizard BSP ([01](01-hardware.md))
 - [x] `src/app_main.c` boot + heap/wifi heartbeat log + `src/CMakeLists.txt`
 - [x] Custom board JSON (`boards/esp32s3-knob.json`) — **build passes** (RAM 11%, Flash 11%)
-- [x] `include/secrets.h.example` (lv_conf.h deferred to M1 display)
+- [x] `include/secrets.h.example` (now optional — see M6 Wi-Fi provisioning)
 
 ## M1 — Hardware bring-up
 - [x] All pins confirmed incl. push-button **GPIO0** (EmbeddedWizard `ew_bsp_inout.c`)
@@ -72,7 +72,10 @@ Cast protocol) before polishing UX.
 - [ ] Error/edge handling: device disappears, app stops, Wi-Fi drop
 - [ ] Boot time + memory budget pass
 - [ ] OTA updates (dual-app partitions already provisioned)
-- [ ] BLE/captive-portal Wi-Fi provisioning (replace compiled-in creds)
+- [x] **Wi-Fi provisioning** — SoftAP + on-LCD QR + web form (`192.168.4.1`),
+      creds saved to NVS, Wi-Fi status icon (`components/provisioning`, `wifi`,
+      `run_provisioning`); compiled `secrets.h` now optional — built
+- [ ] DNS captive-portal hijack (53/udp) so the form auto-opens after joining
 
 ## Open questions
 

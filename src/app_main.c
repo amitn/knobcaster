@@ -14,23 +14,29 @@
 #include "esp_system.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
+#include "esp_mac.h"
 #include "nvs_flash.h"
 
 #include "wifi.h"
+#include "prov.h"
 #include "cast_discovery.h"
 #include "cast_session.h"
 #include "display.h"
 #include "knob.h"
 #include "ui.h"
 
-// Wi-Fi credentials. Copy include/secrets.h.example -> include/secrets.h.
+// Optional compiled-in Wi-Fi creds (include/secrets.h). If absent, the device
+// falls back to on-device web provisioning (SoftAP + QR + form).
 #if defined(__has_include)
 #  if __has_include("secrets.h")
 #    include "secrets.h"
 #  endif
 #endif
 #ifndef WIFI_SSID
-#  error "Create include/secrets.h (copy from secrets.h.example) with WIFI_SSID / WIFI_PASS"
+#  define WIFI_SSID ""
+#endif
+#ifndef WIFI_PASS
+#  define WIFI_PASS ""
 #endif
 
 static const char *TAG = "app";
@@ -158,6 +164,7 @@ static session_result_t run_session(void)
             ui_set_muted(v.muted);
             ui_set_playing(m.state == CAST_PLAYER_PLAYING);
             ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
+            ui_set_wifi(true);
             cache_set(g_active, &m, &v);
         }
     }
@@ -223,6 +230,44 @@ static int device_list_overlay(void)
     return chosen;
 }
 
+// Bring up the SoftAP + web form and block until the user submits credentials
+// that successfully connect. Saves working creds to NVS.
+static void run_provisioning(void)
+{
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    char ap[24];
+    snprintf(ap, sizeof(ap), "CastKnob-%02X%02X", mac[4], mac[5]);
+    char qr[64];
+    snprintf(qr, sizeof(qr), "WIFI:S:%s;T:nopass;;", ap);   // scan to join the AP
+
+    ESP_LOGI(TAG, "Wi-Fi provisioning: AP \"%s\"", ap);
+    wifi_start_ap(ap);
+    prov_start();
+    ui_prov_show(qr, ap);
+    ui_set_wifi(false);
+
+    char ssid[33], pass[65];
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(200));
+        if (!prov_take_creds(ssid, sizeof(ssid), pass, sizeof(pass))) continue;
+
+        ui_prov_hide();
+        ui_set_now_playing("Wi-Fi", "connecting...", ssid, -1);
+        prov_stop();
+        wifi_stop_ap();
+        wifi_connect_to(ssid, pass);
+        if (wifi_wait_connected(15000)) {
+            wifi_creds_save(ssid, pass);     // remember for next boot
+            return;
+        }
+        ESP_LOGW(TAG, "connect failed; reopening provisioning portal");
+        wifi_start_ap(ap);
+        prov_start();
+        ui_prov_show(qr, ap);
+    }
+}
+
 static void init_nvs(void)
 {
     esp_err_t err = nvs_flash_init();
@@ -249,18 +294,36 @@ void app_main(void)
     knob_init();
     ui_init();
 
-    wifi_start(WIFI_SSID, WIFI_PASS);
-    if (!wifi_wait_connected(30000)) {
-        ESP_LOGW(TAG, "Wi-Fi not up after 30s; will keep retrying in background");
+    wifi_init();
+
+    // Prefer saved creds (NVS), then compiled-in secrets; otherwise provision.
+    char ssid[33] = {0}, pass[65] = {0};
+    bool have = wifi_creds_load(ssid, sizeof(ssid), pass, sizeof(pass));
+    if (!have && WIFI_SSID[0]) {
+        strlcpy(ssid, WIFI_SSID, sizeof(ssid));
+        strlcpy(pass, WIFI_PASS, sizeof(pass));
+        have = true;
     }
+    if (have) {
+        ui_set_now_playing("Cast Knob", "connecting...", ssid, -1);
+        wifi_connect_to(ssid, pass);
+    }
+    if (!wifi_wait_connected(have ? 15000 : 1)) {
+        run_provisioning();                 // SoftAP + QR + web form
+    }
+    ui_set_wifi(true);
 
     cast_discovery_init();
 
     for (;;) {
         if (!wifi_is_connected()) {
             ESP_LOGI(TAG, "Wi-Fi down, waiting to reconnect...");
-            ui_set_now_playing("Cast Knob", "Wi-Fi...", "", -1);
-            vTaskDelay(pdMS_TO_TICKS(3000));
+            ui_set_wifi(false);
+            ui_set_now_playing("Cast Knob", "reconnecting...", "", -1);
+            if (!wifi_wait_connected(20000)) {
+                run_provisioning();         // persistent failure -> portal
+            }
+            ui_set_wifi(true);
             continue;
         }
 

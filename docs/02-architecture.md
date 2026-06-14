@@ -50,7 +50,8 @@ for the knob), built on `esp-tls`, the IDF `mdns` component, `cJSON`, and
 
 | Module | Responsibility | Key APIs |
 |--------|----------------|----------|
-| `net/wifi` | Connect & reconnect; store creds in NVS | `wifi_begin()`, events (`esp_wifi` + `esp_netif`) |
+| `wifi` | STA connect/reconnect, SoftAP, scan, NVS creds | `wifi_init/connect_to/start_ap/creds_*` (`esp_wifi`+`esp_netif`) |
+| `provisioning` | SoftAP web form to capture home Wi-Fi creds | `prov_start/stop/take_creds` (`esp_http_server`) |
 | `cast/discovery` | mDNS browse `_googlecast._tcp`, maintain device table | `discovery_poll()` → `CastDevice[]` (IDF `mdns`) |
 | `cast/connection` | One TLS socket per device; frame/deframe CASTV2; PING/PONG | `connect()`, `send(ns, dest, json)`, `poll()` (`esp-tls`) |
 | `cast/session` | Per-device receiver+media status; request IDs; transport cmds | `getStatus()`, `setVolume()`, `play()`, `pause()`, `stop()`, `next()`, `prev()` |
@@ -83,6 +84,38 @@ knob/touch ──intent──▶ ui_task ──CastCommand──▶ [queue] ─�
                           ▲                                     │
                           └────────AppState snapshot────────────┘
 ```
+
+## Wi-Fi provisioning (SoftAP + QR + web form)
+
+No credentials are compiled in by default. The boot sequence picks creds in this
+order, and falls back to on-device provisioning:
+
+```
+boot ─▶ wifi_init (STA)
+     ─▶ creds? NVS  → else compiled secrets.h → else none
+     ─▶ wifi_connect_to(ssid,pass), wait ≤15s
+        └─ connected ──▶ run app
+        └─ failed/none ─▶ run_provisioning():
+              wifi_start_ap("CastKnob-XXXX")     # open SoftAP @ 192.168.4.1, APSTA
+              prov_start()                        # esp_http_server
+              ui_prov_show(QR, ap)                # LCD shows a QR code
+              ┌── phone scans QR ──▶ joins "CastKnob-XXXX"
+              │   opens 192.168.4.1 (wildcard handler serves the form on any URL)
+              │   submits home SSID + password  (POST /save, url-decoded)
+              └── prov_take_creds() ─▶ stop AP+server ─▶ wifi_connect_to()
+                     connected ─▶ wifi_creds_save() to NVS ─▶ run app
+                     failed    ─▶ reopen the portal
+```
+
+- **QR** encodes a `WIFI:S:CastKnob-XXXX;T:nopass;;` join string (LVGL `lv_qrcode`,
+  `CONFIG_LV_USE_QRCODE`). Scanning it joins the setup AP; the captive form then
+  loads. A wildcard `GET /*` handler serves the form for captive-portal probes.
+- **Persistence:** working creds are stored in NVS (namespace `wifi`) and reused
+  on the next boot; the compiled `secrets.h` is only a fallback for dev.
+- **Status:** a Wi-Fi icon on the now-playing screen is green when connected, red
+  when not (`ui_set_wifi`). A persistent drop at runtime re-opens the portal.
+- *Not a DNS captive portal yet* — auto-popup relies on the phone probing `/*`;
+  worst case the user opens `192.168.4.1` manually. A 53/udp DNS hijack is a TODO.
 
 ## Connection strategy
 
