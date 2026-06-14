@@ -4,7 +4,9 @@
 // heartbeat. Display/LVGL HAL and the Cast layer are added in later milestones
 // (see docs/06-roadmap.md).
 #include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -80,6 +82,13 @@ static dev_cache_t g_cache[CAST_MAX_DEVICES];
 typedef enum { CMD_VOL, CMD_MUTE, CMD_TRANSPORT, CMD_SELECT, CMD_SWIPE } cmd_kind_t;
 typedef struct { cmd_kind_t kind; int arg; } cmd_t;
 static QueueHandle_t g_cmd_q;
+
+// Sort discovered devices alphabetically (case-insensitive) for a stable list.
+static int dev_name_cmp(const void *a, const void *b)
+{
+    return strcasecmp(((const cast_device_t *)a)->friendly_name,
+                      ((const cast_device_t *)b)->friendly_name);
+}
 
 static void state_lock(void)   { xSemaphoreTake(g_state_mtx, portMAX_DELAY); }
 static void state_unlock(void) { xSemaphoreGive(g_state_mtx); }
@@ -374,6 +383,7 @@ void app_main(void)
 
         static cast_device_t scan[CAST_MAX_DEVICES];
         int n = cast_discovery_scan(scan, CAST_MAX_DEVICES, 3000);
+        qsort(scan, n, sizeof(scan[0]), dev_name_cmp);   // stable A-Z order
         ESP_LOGI(TAG, "discovered %d Cast device(s)  [heap=%" PRIu32 "B psram=%dB]",
                  n, esp_get_free_heap_size(),
                  (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
