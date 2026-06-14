@@ -402,8 +402,11 @@ void app_main(void)
         int64_t now = esp_timer_get_time();
 
         // Periodic mDNS discovery (and on first run); the warm pool keeps the
-        // active session alive across rescans.
-        if (now - last_discover >= 30000000) {
+        // active session alive across rescans. last_discover==0 is the sentinel
+        // for "scan now" — esp_timer_get_time() is monotonic from boot, so a
+        // plain `now - last_discover >= interval` would wrongly wait ~30s after
+        // boot before the very first scan.
+        if (last_discover == 0 || now - last_discover >= 30000000) {
             last_discover = now;
             static cast_device_t scan[CAST_MAX_DEVICES];
             int n = cast_discovery_scan(scan, CAST_MAX_DEVICES, 3000);

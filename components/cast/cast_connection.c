@@ -7,6 +7,7 @@
 #include "esp_tls.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
 
 static const char *TAG = "cast.conn";
 
@@ -39,13 +40,15 @@ cast_conn_t *cast_conn_open(esp_ip4_addr_t ip, uint16_t port)
     c->tls = esp_tls_init();
     if (!c->tls) { cast_conn_close(c); return NULL; }
 
+    int64_t t0 = esp_timer_get_time();
     int ok = esp_tls_conn_new_sync(host, strlen(host), port, &cfg, c->tls);
+    int ms = (int)((esp_timer_get_time() - t0) / 1000);
     if (ok != 1) {
-        ESP_LOGE(TAG, "TLS connect to %s:%u failed", host, port);
+        ESP_LOGE(TAG, "TLS connect to %s:%u failed after %dms", host, port, ms);
         cast_conn_close(c);
         return NULL;
     }
-    ESP_LOGI(TAG, "connected to %s:%u", host, port);
+    ESP_LOGI(TAG, "connected to %s:%u in %dms", host, port, ms);
     return c;
 }
 
