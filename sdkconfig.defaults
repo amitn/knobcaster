@@ -48,6 +48,10 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
 # --- LVGL: enable the QR code widget (Wi-Fi provisioning screen) ---
 CONFIG_LV_USE_QRCODE=y
+# --- LVGL: Tiny-TTF renders an embedded TTF at runtime (Hebrew/Unicode song
+# titles; default Montserrat is Latin-only) + bidi for RTL (Hebrew) ordering. ---
+CONFIG_LV_USE_TINY_TTF=y
+CONFIG_LV_USE_BIDI=y
 # --- LVGL: enable lv_snapshot (serial framebuffer dump, `just shot`) ---
 CONFIG_LV_USE_SNAPSHOT=y
 # Use the C-stdlib allocator (ESP heap, large allocs -> PSRAM) instead of LVGL's

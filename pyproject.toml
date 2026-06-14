@@ -26,3 +26,9 @@ dependencies = [
 managed = true
 # This repo is firmware, not a Python package — don't try to build/install it.
 package = false
+
+[dependency-groups]
+dev = [
+    "brotli>=1.2.0",
+    "fonttools>=4.63.0",
+]

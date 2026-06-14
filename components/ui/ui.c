@@ -6,6 +6,13 @@
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 
+#include "font_dejavu_heb.h"
+
+// Tiny-TTF fonts rendered from the embedded DejaVu subset (Latin + Hebrew), so
+// non-Latin song titles render instead of tofu boxes. One TTF, two sizes.
+static lv_font_t *s_font_title;    // song title (large)
+static lv_font_t *s_font_body;     // device name + subtitle
+
 // Widgets we update at runtime.
 static lv_obj_t *s_device_lbl;
 static lv_obj_t *s_title_lbl;
@@ -78,6 +85,11 @@ void ui_init(void)
 {
     lvgl_port_lock(0);
 
+    s_font_title = lv_tiny_ttf_create_data(font_dejavu_heb_ttf,
+                                           font_dejavu_heb_ttf_len, 22);
+    s_font_body  = lv_tiny_ttf_create_data(font_dejavu_heb_ttf,
+                                           font_dejavu_heb_ttf_len, 15);
+
     lv_obj_t *scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
     lv_obj_add_flag(scr, LV_OBJ_FLAG_CLICKABLE);
@@ -104,6 +116,8 @@ void ui_init(void)
     // Device name (top) — tapping it opens the device list.
     s_device_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(s_device_lbl, lv_color_white(), 0);
+    if (s_font_body) lv_obj_set_style_text_font(s_device_lbl, s_font_body, 0);
+    lv_obj_set_style_base_dir(s_device_lbl, LV_BASE_DIR_AUTO, 0);
     lv_label_set_text(s_device_lbl, "Cast Knob");
     lv_obj_align(s_device_lbl, LV_ALIGN_TOP_MID, 0, 70);
     lv_obj_add_flag(s_device_lbl, LV_OBJ_FLAG_CLICKABLE);
@@ -114,6 +128,8 @@ void ui_init(void)
     s_title_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(s_title_lbl, lv_color_white(), 0);
     lv_obj_set_style_text_align(s_title_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    if (s_font_title) lv_obj_set_style_text_font(s_title_lbl, s_font_title, 0);
+    lv_obj_set_style_base_dir(s_title_lbl, LV_BASE_DIR_AUTO, 0);
     lv_label_set_long_mode(s_title_lbl, LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_title_lbl, 240);
     lv_label_set_text(s_title_lbl, "ready");
@@ -123,6 +139,8 @@ void ui_init(void)
     s_subtitle_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(s_subtitle_lbl, lv_color_hex(0xAAAAAA), 0);
     lv_obj_set_style_text_align(s_subtitle_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    if (s_font_body) lv_obj_set_style_text_font(s_subtitle_lbl, s_font_body, 0);
+    lv_obj_set_style_base_dir(s_subtitle_lbl, LV_BASE_DIR_AUTO, 0);
     lv_label_set_long_mode(s_subtitle_lbl, LV_LABEL_LONG_DOT);
     lv_obj_set_width(s_subtitle_lbl, 240);
     lv_label_set_text(s_subtitle_lbl, "");

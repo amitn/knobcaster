@@ -85,6 +85,10 @@ check:
 test:
     uv run pio test -e native
 
+# Regenerate the embedded Hebrew/Latin TTF subset (components/ui/fonts/).
+gen-font:
+    uv run python scripts/gen_font.py
+
 # Physical UI smoke test: drive the device over serial, screenshot each step into
 # uitest_shots/ + write EXPECTATIONS.md (an agent/human verifies the shots).
 uitest:
