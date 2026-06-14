@@ -19,7 +19,7 @@ Cast protocol) before polishing UX.
 - [x] LVGL 9 via `esp_lvgl_port`; now-playing screen w/ volume arc (`components/ui`) — built
 - [x] app_main drives the screen from the Cast session (`ui_set_now_playing`)
 - [x] CST816 touch (`esp_lcd_touch_cst816s`, IDF6 I2C-master) → LVGL pointer (`touch.c`) — built
-- [ ] Encoder via PCNT + button (GPIO0) → events
+- [x] Encoder via PCNT (x4) + button GPIO0 ISR → `knob_take_delta/pressed` (`knob.c`) — built
 
 > Display + UI build clean; **untested on hardware** — panel init, color/byte
 > order, and backlight polarity need on-device validation.
@@ -47,9 +47,10 @@ Cast protocol) before polishing UX.
 ## M4 — Cast control path
 - [x] Command API in `cast_session`: set/step volume, mute, play, pause,
       toggle, stop, next, prev (QUEUE_UPDATE jump) — built, not device-tested
-- [ ] Wire SET_VOLUME to knob with debounce + reconcile (needs M1 encoder)
-- [ ] Wire Play/Pause to knob press; Stop/Next/Prev to touch (needs M1)
-- [ ] Mute (long-press) and supported-commands gating in the UI
+- [x] Wire SET_VOLUME to knob rotation (optimistic; arc follows) — `run_session`
+- [x] Wire Play/Pause to knob press — `run_session`
+- [ ] Stop/Next/Prev + device-switch via touch gestures (UI work, M5)
+- [ ] Volume debounce/reconcile; mute (long-press); supported-commands gating
 
 ## M5 — Multi-device UX
 - [ ] Switch active device (swipe / list)

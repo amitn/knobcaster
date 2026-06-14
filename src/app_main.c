@@ -19,6 +19,7 @@
 #include "cast_discovery.h"
 #include "cast_session.h"
 #include "display.h"
+#include "knob.h"
 #include "ui.h"
 
 // Wi-Fi credentials. Copy include/secrets.h.example -> include/secrets.h.
@@ -56,10 +57,24 @@ static void run_session(const cast_device_t *dev)
 
     int64_t last_log = 0;
     for (;;) {
-        if (!cast_session_poll(s, 500)) {
+        if (!cast_session_poll(s, 100)) {
             ESP_LOGW(TAG, "session closed");
             break;
         }
+
+        // Knob rotation -> volume (optimistic; arc follows immediately).
+        int detents = knob_take_delta();
+        if (detents != 0) {
+            cast_session_step_volume(s, detents * 0.03f);  // ~3% per detent
+            cast_volume_status_t v; cast_session_get_volume(s, &v);
+            ui_set_now_playing(NULL, NULL, NULL, (int)(v.level * 100 + 0.5f));
+        }
+        // Knob press -> play/pause.
+        if (knob_take_pressed()) {
+            ESP_LOGI(TAG, "knob press -> toggle play/pause");
+            cast_session_toggle_pause(s);
+        }
+
         int64_t now = esp_timer_get_time();
         if (now - last_log >= 2000000) {  // refresh log + screen every ~2s
             last_log = now;
@@ -101,6 +116,7 @@ void app_main(void)
     // Bring up the screen first so there's visible feedback during Wi-Fi join.
     lv_display_t *disp = display_init();
     touch_init(disp);
+    knob_init();
     ui_init();
 
     wifi_start(WIFI_SSID, WIFI_PASS);
