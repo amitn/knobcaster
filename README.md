@@ -72,6 +72,7 @@ knob, touchscreen, and a small **LVGL** GUI form the control surface. See
 | [04 — UI / UX](docs/04-ui-ux.md) | Knob + touch interaction model, LVGL screens |
 | [05 — Build & tooling](docs/05-build-and-tooling.md) | uv + Just + PlatformIO workflow |
 | [06 — Roadmap](docs/06-roadmap.md) | Milestones & open questions |
+| [07 — Testing](docs/07-testing.md) | Trace capture + native unit tests (planned) |
 
 ## Toolchain
 

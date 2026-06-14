@@ -70,6 +70,13 @@ Cast protocol) before polishing UX.
       group detection — built, **needs a real Cast group to validate**
 - [ ] Album artwork: fetch `media.metadata.images[]`, decode JPEG → `lv_image` (stretch)
 
+## Testing infra (see [07-testing.md](07-testing.md))
+- [x] Design doc: trace capture + native unit tests
+- [ ] Extract pure `cast_status.{c,h}` parser (rewire `cast_session`)
+- [ ] `native` env + Unity; `cast_proto` round-trip tests; `just test`
+- [ ] `cast trace` (`-DCAST_TRACE`) + `just trace`; capture fixtures on hardware
+- [ ] `cast_status` fixture tests; wire into CI
+
 ## M6 — Polish & robustness
 - [ ] Haptics (DRV2605) on detents/press
 - [ ] Error/edge handling: device disappears, app stops, Wi-Fi drop
