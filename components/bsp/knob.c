@@ -14,11 +14,10 @@ static const char *TAG = "knob";
 static pcnt_unit_handle_t s_pcnt;
 
 // This board's encoder pulses the PCNT count to +/-1 per detent and returns to 0
-// (it does NOT accumulate). A fast poll task counts each 0 -> +/-1 *entering*
-// transition as one detent (sign = direction) and ignores the settle back to 0,
-// so a detent nets +/-1 instead of cancelling out.
+// (it does NOT accumulate). A fast poll task counts ONE detent per departure from
+// 0 (sign = direction) and only re-arms when the count returns to 0. This rejects
+// the glitchy mid-detent reversals that otherwise made one direction "chunky".
 static volatile int s_enc_accum;
-static int          s_enc_last;
 
 #define LONG_PRESS_US 600000   // hold >= 600ms => long press
 #define DEBOUNCE_US   20000
@@ -46,17 +45,21 @@ static void IRAM_ATTR button_isr(void *arg)
     }
 }
 
-// Fast poll: turn each PCNT 0 -> +/-1 transition into one accumulated detent.
+// Fast poll: one accumulated detent per departure from 0, re-armed at 0.
 static void enc_task(void *arg)
 {
+    bool armed = true;
     for (;;) {
         int count = 0;
         if (pcnt_unit_get_count(s_pcnt, &count) == ESP_OK) {
-            if (count >= 1 && s_enc_last < 1)        s_enc_accum += 1;   // CW detent
-            else if (count <= -1 && s_enc_last > -1) s_enc_accum -= 1;   // CCW detent
-            s_enc_last = count;
+            if (count == 0) {
+                armed = true;
+            } else if (armed) {
+                s_enc_accum += (count > 0) ? 1 : -1;   // sign = direction
+                armed = false;
+            }
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(4));
     }
 }
 
@@ -69,7 +72,7 @@ void knob_init(void)
     };
     ESP_ERROR_CHECK(pcnt_new_unit(&unit_cfg, &s_pcnt));
 
-    pcnt_glitch_filter_config_t filter = { .max_glitch_ns = 1000 };
+    pcnt_glitch_filter_config_t filter = { .max_glitch_ns = 5000 };
     ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(s_pcnt, &filter));
 
     pcnt_chan_config_t chan_a_cfg = {
