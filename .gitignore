@@ -1,0 +1,24 @@
+# PlatformIO
+.pio/
+*.bin
+*.elf
+
+# ESP-IDF generated (keep sdkconfig.defaults; ignore the rest)
+sdkconfig
+sdkconfig.knob
+sdkconfig.old
+managed_components/
+dependencies.lock
+
+# uv / Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local secrets (Wi-Fi credentials etc.)
+include/secrets.h
+src/secrets.h
+
+# Editors / OS
+.DS_Store
+*.swp

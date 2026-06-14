@@ -1,0 +1,40 @@
+# ESP-IDF default config for the ESP32-S3 Knob Cast controller.
+# PlatformIO seeds the generated sdkconfig from this file. Edit here (not the
+# generated sdkconfig.*) so the config is reproducible.
+
+# --- Target ---
+CONFIG_IDF_TARGET="esp32s3"
+
+# --- Flash: 16 MB ---
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# --- PSRAM: 8 MB OCTAL (S3R8) ---
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+
+# --- CPU ---
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# --- USB Serial/JTAG console (logs over native USB) ---
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# --- TLS: Cast devices use self-signed certs; we connect without CA verify. ---
+# (esp-tls is built-in; mbedTLS heap sizing matters with PSRAM enabled.)
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_SSL_VARIABLE_BUFFER_LENGTH=y
+
+# --- mDNS / lwIP ---
+CONFIG_LWIP_IPV4=y
+
+# --- Main task stack (LVGL + app init) ---
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# --- Compiler ---
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y

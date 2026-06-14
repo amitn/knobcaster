@@ -1,0 +1,18 @@
+[project]
+name = "esp32-cast-knob"
+version = "0.1.0"
+description = "Build tooling for the ESP32-S3 Knob Cast controller firmware (PlatformIO driven via uv)."
+readme = "README.md"
+requires-python = ">=3.10"
+
+# PlatformIO is a Python application. We pin it here so that `uv` owns the
+# virtualenv (.venv) that PlatformIO — and therefore the whole toolchain —
+# runs inside. Every Just recipe calls `uv run pio ...`, which guarantees the
+# pinned PlatformIO is used and never the (possibly absent/global) system one.
+dependencies = [
+    "platformio>=6.1.16",
+]
+
+[tool.uv]
+# Keep the venv in-project so editors / Just recipes find it deterministically.
+managed = true
