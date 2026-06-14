@@ -12,13 +12,17 @@ Everything else is secondary.
 
 | Gesture | Action |
 |---------|--------|
-| **Rotate dial** | Adjust **volume** of the active device (optimistic, instant ring) |
-| **Swipe left / right** | **Select device** — cycle to prev/next discovered speaker |
-| **Press dial** | **Play / Pause** toggle on the active device |
+| **Rotate dial** | **Volume mode:** adjust volume · **Speakers mode:** scroll the speaker preview |
+| **Press dial** | **Toggle dial mode** (Volume ⇄ Speakers); leaving Speakers commits the previewed device |
 | **Long-press dial** | **Mute / unmute** the active device |
-| **Tap left/right edges** | Previous / Next track |
+| **Swipe left / right** | Quick **select device** (prev/next discovered speaker) |
+| **Tap play/pause button** | Play / Pause (on-screen transport) |
+| **Tap ◀◀ / ▶▶ buttons** | Previous / Next track |
 | **Tap center** | Open **device list** overlay (jump directly to any device) |
 | **Tap a device in list** | Make it active, return to now-playing |
+
+The dial has two modes; the on-screen hint and a highlighted device name show
+which. Press toggles between them — see "dial mode toggle" below.
 
 The two primaries are deliberately split across the two input surfaces — the
 **dial owns volume**, **swipe owns device selection** — so they never compete.
@@ -29,26 +33,25 @@ swiping cycles through.
 > *intents*; it never talks to the network directly (see
 > [02-architecture.md](02-architecture.md#concurrency-model)).
 
-## TODO — dial mode toggle (planned redesign)
+## Dial mode toggle (implemented)
 
-Make the **knob press toggle the dial's function between two modes**, with a clear
-on-screen indicator of the current mode:
+The **knob press toggles the dial's function between two modes**, with the hint
+line and a highlighted (blue) device name indicating the current mode:
 
 | Mode | Dial does | Indicator |
 |------|-----------|-----------|
 | **Volume** (default) | adjust the active speaker's volume | volume ring + % |
 | **Speakers** | scroll/select the active speaker from the discovered list | highlighted device name / list |
 
-- **Press** = switch mode (Volume ⇄ Speakers). The dial's effect follows the mode.
-- In **Speakers** mode, rotating moves the selection; settling on a device (or a
-  short timeout / press back to Volume) makes it active and opens its session.
-- This supersedes today's model where the dial is always volume and **press =
-  play/pause**. Open question: where play/pause goes — likely the on-screen
-  transport buttons only, or a long-press. Decide before implementing.
-- Keep swipe (quick prev/next device) and tap-center (full list) as-is, or fold
-  them into Speakers mode.
+- **Press** switches mode (Volume ⇄ Speakers); the dial's effect follows the mode.
+- In **Speakers** mode, rotating moves the previewed device (name shown,
+  highlighted); pressing back to Volume **commits** it — if it changed, its
+  session opens. Each new session starts in Volume mode.
+- **Play/pause** now lives on the on-screen center transport button (the knob
+  press is the mode toggle). **Long-press** = mute. Swipe (quick prev/next
+  device) and tap-center (full list) are unchanged.
 
-Status: **not implemented** — tracked in [06-roadmap.md](06-roadmap.md).
+Implemented in `run_session` (`g_dial_mode`/`g_sel_preview`) + `ui_set_dial_mode`.
 
 ## Screens
 

@@ -31,6 +31,10 @@ void ui_prov_hide(void);
 // Reflect play state on the center transport button (play vs pause icon).
 void ui_set_playing(bool playing);
 
+// Reflect the dial mode: false = Volume (dial sets volume), true = Speakers
+// (dial picks the active speaker). Updates the hint + highlights the device name.
+void ui_set_dial_mode(bool speakers_mode);
+
 // On-screen transport buttons.
 typedef enum {
     UI_TRANSPORT_NONE = 0,

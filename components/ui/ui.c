@@ -132,7 +132,7 @@ void ui_init(void)
     // Hint (bottom).
     s_hint_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(s_hint_lbl, lv_color_hex(0x666666), 0);
-    lv_label_set_text(s_hint_lbl, "swipe = device   tap = list");
+    lv_label_set_text(s_hint_lbl, "press: speakers   swipe: device");
     lv_obj_align(s_hint_lbl, LV_ALIGN_BOTTOM_MID, 0, -44);
 
     lvgl_port_unlock();
@@ -163,6 +163,17 @@ void ui_set_playing(bool playing)
     lvgl_port_lock(0);
     if (s_play_lbl)
         lv_label_set_text(s_play_lbl, playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+    lvgl_port_unlock();
+}
+
+void ui_set_dial_mode(bool speakers_mode)
+{
+    lvgl_port_lock(0);
+    lv_label_set_text(s_hint_lbl, speakers_mode ? "rotate: pick   press: select"
+                                                : "press: speakers   swipe: device");
+    // Highlight the device name (blue) while picking a speaker.
+    lv_obj_set_style_text_color(s_device_lbl,
+        speakers_mode ? lv_color_hex(0x1E88E5) : lv_color_white(), 0);
     lvgl_port_unlock();
 }
 

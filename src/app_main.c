@@ -69,6 +69,11 @@ typedef struct {
 } dev_cache_t;
 static dev_cache_t g_cache[CAST_MAX_DEVICES];
 
+// Dial mode: the knob either sets volume or picks the active speaker.
+typedef enum { DIAL_VOLUME = 0, DIAL_SPEAKERS } dial_mode_t;
+static dial_mode_t g_dial_mode;
+static int         g_sel_preview;   // previewed device index while in DIAL_SPEAKERS
+
 typedef enum {
     SESSION_CLOSED    = 0,  // connection dropped -> rescan
     SESSION_SWITCHED  = 1,  // user swiped -> reopen new active device
@@ -104,6 +109,9 @@ static session_result_t run_session(void)
         return SESSION_CLOSED;
     }
 
+    g_dial_mode = DIAL_VOLUME;          // each session starts in Volume mode
+    ui_set_dial_mode(false);
+
     int64_t last_log = 0;
     for (;;) {
         if (!cast_session_poll(s, 100)) {
@@ -130,18 +138,39 @@ static session_result_t run_session(void)
             }
         }
 
-        // Knob rotation -> volume (optimistic; arc follows immediately).
+        // Knob short press -> toggle dial mode (Volume <-> Speakers). Leaving
+        // Speakers mode commits the previewed device (reopens its session).
+        if (knob_take_pressed()) {
+            if (g_dial_mode == DIAL_VOLUME) {
+                g_dial_mode = DIAL_SPEAKERS;
+                g_sel_preview = g_active;
+                ui_set_dial_mode(true);
+                ui_set_now_playing(g_devices[g_sel_preview].friendly_name, "select speaker", "", -1);
+            } else {
+                g_dial_mode = DIAL_VOLUME;
+                ui_set_dial_mode(false);
+                if (g_sel_preview != g_active) {
+                    g_active = g_sel_preview;
+                    ESP_LOGI(TAG, "speaker picked -> %s", g_devices[g_active].friendly_name);
+                    cast_session_close(s);
+                    return SESSION_SWITCHED;
+                }
+            }
+        }
+
+        // Knob rotation -> volume (Volume mode) or speaker preview (Speakers mode).
         int detents = knob_take_delta();
         if (detents != 0) {
-            cast_session_step_volume(s, detents * 0.03f);  // ~3% per detent
-            cast_volume_status_t v; cast_session_get_volume(s, &v);
-            ui_set_now_playing(NULL, NULL, NULL, (int)(v.level * 100 + 0.5f));
+            if (g_dial_mode == DIAL_VOLUME) {
+                cast_session_step_volume(s, detents * 0.03f);  // ~3% per detent
+                cast_volume_status_t v; cast_session_get_volume(s, &v);
+                ui_set_now_playing(NULL, NULL, NULL, (int)(v.level * 100 + 0.5f));
+            } else if (g_count > 0) {
+                g_sel_preview = ((g_sel_preview + detents) % g_count + g_count) % g_count;
+                ui_set_now_playing(g_devices[g_sel_preview].friendly_name, "select speaker", "", -1);
+            }
         }
-        // Knob short press -> play/pause; long press -> mute toggle.
-        if (knob_take_pressed()) {
-            ESP_LOGI(TAG, "knob press -> toggle play/pause");
-            cast_session_toggle_pause(s);
-        }
+        // Knob long press -> mute toggle.
         if (knob_take_long_pressed()) {
             cast_volume_status_t v; cast_session_get_volume(s, &v);
             ESP_LOGI(TAG, "knob long-press -> %s", v.muted ? "unmute" : "mute");
@@ -165,12 +194,15 @@ static session_result_t run_session(void)
                      m.app_name[0] ? m.app_name : "-",
                      player_state_str(m.state),
                      m.title, m.subtitle, vol_pct, v.muted ? " (muted)" : "");
-            ui_set_now_playing(dev->friendly_name,
-                               m.title[0] ? m.title : player_state_str(m.state),
-                               m.subtitle, vol_pct);
-            ui_set_muted(v.muted);
-            ui_set_playing(m.state == CAST_PLAYER_PLAYING);
-            ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
+            // Don't clobber the speaker-preview labels while picking.
+            if (g_dial_mode == DIAL_VOLUME) {
+                ui_set_now_playing(dev->friendly_name,
+                                   m.title[0] ? m.title : player_state_str(m.state),
+                                   m.subtitle, vol_pct);
+                ui_set_muted(v.muted);
+                ui_set_playing(m.state == CAST_PLAYER_PLAYING);
+                ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
+            }
             ui_set_wifi(true);
             cache_set(g_active, &m, &v);
         }
