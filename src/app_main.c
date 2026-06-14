@@ -8,6 +8,8 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_event.h"
 #include "esp_netif.h"
@@ -53,11 +55,16 @@ static const char *player_state_str(cast_player_state_t st)
     }
 }
 
-// Discovered devices and the currently-selected one (swipe changes g_active).
+// --- shared state between the net task (owns Cast networking) and the UI task --
+// g_devices/g_count/g_active are written by the net task and read by the UI task
+// (device list); guard with g_state_mtx. g_active is only ever changed by the net
+// task in response to commands.
 static cast_device_t g_devices[CAST_MAX_DEVICES];
 static int           g_count;
 static int           g_active;
 static char          g_active_id[CAST_ID_LEN];  // sticky selection across rescans
+static SemaphoreHandle_t g_state_mtx;
+static volatile int  g_volume_pct;              // for the UI's optimistic arc
 
 // Cached per-device state for the device-list overlay (parallel to g_devices;
 // cleared on each rescan). The active device's entry is kept live.
@@ -69,15 +76,23 @@ typedef struct {
 } dev_cache_t;
 static dev_cache_t g_cache[CAST_MAX_DEVICES];
 
+// Commands from the UI task -> net task (applied to the live session).
+typedef enum { CMD_VOL, CMD_MUTE, CMD_TRANSPORT, CMD_SELECT, CMD_SWIPE } cmd_kind_t;
+typedef struct { cmd_kind_t kind; int arg; } cmd_t;
+static QueueHandle_t g_cmd_q;
+
+static void state_lock(void)   { xSemaphoreTake(g_state_mtx, portMAX_DELAY); }
+static void state_unlock(void) { xSemaphoreGive(g_state_mtx); }
+static void cmd_send(cmd_kind_t kind, int arg)
+{
+    cmd_t c = { kind, arg };
+    if (g_cmd_q) xQueueSend(g_cmd_q, &c, 0);
+}
 
 typedef enum {
     SESSION_CLOSED    = 0,  // connection dropped -> rescan
     SESSION_SWITCHED  = 1,  // user picked a different device -> reopen
 } session_result_t;
-
-// Device list overlay; polls `s` so the active session stays alive while open.
-// Returns the chosen device index, or -1 to keep the current one.
-static int device_list_overlay(cast_session_t *s);
 
 static void cache_set(int idx, const cast_media_status_t *m, const cast_volume_status_t *v)
 {
@@ -88,124 +103,124 @@ static void cache_set(int idx, const cast_media_status_t *m, const cast_volume_s
     strlcpy(g_cache[idx].title, m->title, sizeof(g_cache[idx].title));
 }
 
-// Open a session to the active device and stream its now-playing to the screen,
-// handling knob (volume / play-pause) and swipe (switch device). Returns
-// SESSION_SWITCHED if the user swiped (g_active already advanced — reopen), or
-// SESSION_CLOSED if the connection dropped.
+// [net task] Open a session to the active device, apply queued UI commands, and
+// render now-playing. Returns SESSION_SWITCHED if the user picked another device
+// (g_active already updated — reopen) or SESSION_CLOSED if the connection dropped.
 static session_result_t run_session(void)
 {
-    const cast_device_t *dev = &g_devices[g_active];
-    ESP_LOGI(TAG, "session -> [%d/%d] %s (" IPSTR ")", g_active + 1, g_count,
-             dev->friendly_name, IP2STR(&dev->ip));
-    ui_set_now_playing(dev->friendly_name, "connecting...", "", -1);
+    state_lock();
+    int active = g_active;
+    cast_device_t dev = g_devices[active];
+    state_unlock();
 
-    cast_session_t *s = cast_session_open(dev);
+    ESP_LOGI(TAG, "session -> [%d/%d] %s (" IPSTR ")", active + 1, g_count,
+             dev.friendly_name, IP2STR(&dev.ip));
+    ui_set_now_playing(dev.friendly_name, "connecting...", "", -1);
+
+    cast_session_t *s = cast_session_open(&dev);
     if (!s) {
         ESP_LOGW(TAG, "session open failed");
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(300));
         return SESSION_CLOSED;
     }
 
     int64_t last_log = 0;
     for (;;) {
-        if (!cast_session_poll(s, 100)) {
+        if (!cast_session_poll(s, 30)) {
             ESP_LOGW(TAG, "session closed");
             cast_session_close(s);
             return SESSION_CLOSED;
         }
 
-        // Swipe left/right -> switch active device (immediate reconnect).
-        int sw = ui_take_swipe();
-        if (sw != 0 && g_count > 1) {
-            g_active = (g_active + sw + g_count) % g_count;
-            ESP_LOGI(TAG, "swipe %s -> device %d", sw > 0 ? "next" : "prev", g_active);
-            cast_session_close(s);
-            return SESSION_SWITCHED;
-        }
-        // Tap the device name (or press the knob) -> open the device list. The
-        // session stays alive while the list is open, so re-selecting the same
-        // device (or cancelling) does NOT reconnect.
-        if (ui_take_center_tap() || (knob_take_pressed() && g_count > 1)) {
-            int chosen = device_list_overlay(s);
-            if (chosen >= 0 && chosen != g_active) {
-                g_active = chosen;
+        // Apply commands from the UI task.
+        cmd_t c;
+        while (xQueueReceive(g_cmd_q, &c, 0)) {
+            switch (c.kind) {
+            case CMD_VOL:
+                cast_session_step_volume(s, c.arg * 0.03f);
+                break;
+            case CMD_MUTE: {
+                cast_volume_status_t v; cast_session_get_volume(s, &v);
+                cast_session_set_muted(s, !v.muted);
+                break;
+            }
+            case CMD_TRANSPORT:
+                if (c.arg == UI_TRANSPORT_PREV)            cast_session_prev(s);
+                else if (c.arg == UI_TRANSPORT_NEXT)       cast_session_next(s);
+                else if (c.arg == UI_TRANSPORT_PLAYPAUSE)  cast_session_toggle_pause(s);
+                break;
+            case CMD_SWIPE: {
+                state_lock();
+                g_active = (g_active + c.arg + g_count) % g_count;
+                state_unlock();
                 cast_session_close(s);
                 return SESSION_SWITCHED;
             }
-        }
-
-        // Knob rotation -> volume (optimistic; arc follows immediately).
-        int detents = knob_take_delta();
-        if (detents != 0) {
-            cast_session_step_volume(s, detents * 0.03f);  // ~3% per detent
-            cast_volume_status_t v; cast_session_get_volume(s, &v);
-            ui_set_now_playing(NULL, NULL, NULL, (int)(v.level * 100 + 0.5f));
-        }
-        // Knob long press -> mute toggle.
-        if (knob_take_long_pressed()) {
-            cast_volume_status_t v; cast_session_get_volume(s, &v);
-            ESP_LOGI(TAG, "knob long-press -> %s", v.muted ? "unmute" : "mute");
-            cast_session_set_muted(s, !v.muted);
-        }
-        // On-screen transport buttons.
-        switch (ui_take_transport()) {
-        case UI_TRANSPORT_PREV:      cast_session_prev(s);         break;
-        case UI_TRANSPORT_NEXT:      cast_session_next(s);         break;
-        case UI_TRANSPORT_PLAYPAUSE: cast_session_toggle_pause(s); break;
-        default: break;
+            case CMD_SELECT: {
+                state_lock();
+                bool diff = (c.arg != g_active && c.arg >= 0 && c.arg < g_count);
+                if (diff) g_active = c.arg;
+                state_unlock();
+                if (diff) { cast_session_close(s); return SESSION_SWITCHED; }
+                break;
+            }
+            }
         }
 
         int64_t now = esp_timer_get_time();
-        if (now - last_log >= 2000000) {  // refresh log + screen every ~2s
+        if (now - last_log >= 1000000) {  // refresh log + screen every ~1s
             last_log = now;
             cast_media_status_t m;  cast_session_get_media(s, &m);
             cast_volume_status_t v; cast_session_get_volume(s, &v);
             int vol_pct = (int)(v.level * 100 + 0.5f);
+            g_volume_pct = vol_pct;
             ESP_LOGI(TAG, "[%s] %-8s  \"%s\" - \"%s\"  vol=%d%%%s",
-                     m.app_name[0] ? m.app_name : "-",
-                     player_state_str(m.state),
+                     m.app_name[0] ? m.app_name : "-", player_state_str(m.state),
                      m.title, m.subtitle, vol_pct, v.muted ? " (muted)" : "");
-            ui_set_now_playing(dev->friendly_name,
+            ui_set_now_playing(dev.friendly_name,
                                m.title[0] ? m.title : player_state_str(m.state),
                                m.subtitle, vol_pct);
             ui_set_muted(v.muted);
             ui_set_playing(m.state == CAST_PLAYER_PLAYING);
             ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
             ui_set_wifi(true);
-            cache_set(g_active, &m, &v);
+            state_lock(); cache_set(active, &m, &v); state_unlock();
         }
     }
 }
 
-// Modal device-list overlay. Returns the chosen device index, or -1 to keep the
-// current one. Knob rotates the highlight / press selects; tap a row to select;
-// tap the background or wait 12 s to cancel. Opens instantly (no per-device
-// connect) — shows names + cached state where known.
-static int device_list_overlay(cast_session_t *s)
+// [UI task] Modal device-list overlay. Snapshots the device list, shows it, and
+// returns the chosen index (or -1). The net task keeps the active session alive
+// meanwhile, so re-selecting the same device never reconnects.
+static int device_list_overlay(void)
 {
     static char buf[CAST_MAX_DEVICES][96];
     const char *labels[CAST_MAX_DEVICES];
-    for (int i = 0; i < g_count; i++) {
+    state_lock();
+    int count = g_count, active = g_active;
+    for (int i = 0; i < count; i++) {
         const dev_cache_t *c = &g_cache[i];
-        const char *mark = (i == g_active) ? "> " : "";
+        const char *mark = (i == active) ? "> " : "";
         if (c->valid)
-            snprintf(buf[i], sizeof(buf[i]), "%s%s  %s %d%%",
+            snprintf(buf[i], sizeof(buf[i]), "%s%.60s  %.10s %d%%",
                      mark, g_devices[i].friendly_name, player_state_str(c->state), c->vol_pct);
         else
-            snprintf(buf[i], sizeof(buf[i]), "%s%s", mark, g_devices[i].friendly_name);
+            snprintf(buf[i], sizeof(buf[i]), "%s%.80s", mark, g_devices[i].friendly_name);
         labels[i] = buf[i];
     }
+    state_unlock();
+    if (count == 0) return -1;
 
-    int sel = g_active;
-    ui_devlist_show(labels, g_count, sel);
+    int sel = active;
+    ui_devlist_show(labels, count, sel);
 
     int chosen = -1;
     int64_t t0 = esp_timer_get_time();
     for (;;) {
-        if (!cast_session_poll(s, 30)) { chosen = -1; break; }  // keep session alive
+        vTaskDelay(pdMS_TO_TICKS(20));
         int d = knob_take_delta();
         if (d != 0) {
-            sel = ((sel + d) % g_count + g_count) % g_count;
+            sel = ((sel + d) % count + count) % count;
             ui_devlist_set_sel(sel);
             t0 = esp_timer_get_time();
         }
@@ -217,6 +232,40 @@ static int device_list_overlay(cast_session_t *s)
     }
     ui_devlist_hide();
     return chosen;
+}
+
+// [UI task] Read knob/touch and turn it into commands for the net task. Never
+// blocks on the network, so the UI stays responsive even while a device connects.
+static void ui_input_task(void *arg)
+{
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(15));
+
+        // Knob rotation -> volume (optimistic arc immediately + command).
+        int d = knob_take_delta();
+        if (d != 0) {
+            int p = g_volume_pct + d * 3;
+            g_volume_pct = p < 0 ? 0 : (p > 100 ? 100 : p);
+            ui_set_now_playing(NULL, NULL, NULL, g_volume_pct);
+            cmd_send(CMD_VOL, d);
+        }
+        if (knob_take_long_pressed()) cmd_send(CMD_MUTE, 0);
+
+        ui_transport_t t = ui_take_transport();
+        if (t != UI_TRANSPORT_NONE) cmd_send(CMD_TRANSPORT, t);
+
+        int sw = ui_take_swipe();
+        if (sw != 0) cmd_send(CMD_SWIPE, sw);
+
+        // Tap device name or press knob -> device list (dial navigates, press selects).
+        if (ui_take_center_tap() || knob_take_pressed()) {
+            state_lock(); int n = g_count; state_unlock();
+            if (n > 1) {
+                int chosen = device_list_overlay();
+                if (chosen >= 0) cmd_send(CMD_SELECT, chosen);
+            }
+        }
+    }
 }
 
 // Bring up the SoftAP + web form and block until the user submits credentials
@@ -275,6 +324,9 @@ void app_main(void)
     ESP_LOGI(TAG, " ESP32-S3 Cast Knob  (build %s %s)", __DATE__, __TIME__);
     ESP_LOGI(TAG, "========================================");
 
+    g_state_mtx = xSemaphoreCreateMutex();
+    g_cmd_q = xQueueCreate(16, sizeof(cmd_t));
+
     init_nvs();
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -285,6 +337,7 @@ void app_main(void)
     knob_init();
     ui_init();
     fbdump_start();   // `just shot` -> screen.png
+    xTaskCreate(ui_input_task, "ui_input", 6144, NULL, 5, NULL);  // responsive input
 
     wifi_init();
 
@@ -319,41 +372,45 @@ void app_main(void)
             continue;
         }
 
-        g_count = cast_discovery_scan(g_devices, CAST_MAX_DEVICES, 3000);
+        static cast_device_t scan[CAST_MAX_DEVICES];
+        int n = cast_discovery_scan(scan, CAST_MAX_DEVICES, 3000);
         ESP_LOGI(TAG, "discovered %d Cast device(s)  [heap=%" PRIu32 "B psram=%dB]",
-                 g_count, esp_get_free_heap_size(),
+                 n, esp_get_free_heap_size(),
                  (int)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-        for (int i = 0; i < g_count; i++) {
+        for (int i = 0; i < n; i++) {
             ESP_LOGI(TAG, "  [%d] %-24s %-20s " IPSTR ":%u%s",
-                     i, g_devices[i].friendly_name, g_devices[i].model,
-                     IP2STR(&g_devices[i].ip), g_devices[i].port,
-                     g_devices[i].is_group ? " (group)" : "");
+                     i, scan[i].friendly_name, scan[i].model,
+                     IP2STR(&scan[i].ip), scan[i].port, scan[i].is_group ? " (group)" : "");
         }
 
-        memset(g_cache, 0, sizeof(g_cache));  // device order may have changed
+        // Publish the new list + sticky selection atomically for the UI task.
+        state_lock();
+        memcpy(g_devices, scan, sizeof(g_devices));
+        g_count = n;
+        memset(g_cache, 0, sizeof(g_cache));   // device order may have changed
+        g_active = 0;
+        if (g_active_id[0]) {
+            for (int i = 0; i < n; i++) {
+                if (strcmp(g_devices[i].id, g_active_id) == 0) { g_active = i; break; }
+            }
+        }
+        state_unlock();
 
-        if (g_count == 0) {
-            ui_set_now_playing("Cast Knob", "no speakers found", "swipe = device", -1);
+        if (n == 0) {
+            ui_set_now_playing("Cast Knob", "no speakers found", "tap name: speakers", -1);
             vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }
 
-        // Sticky selection: keep the same device active across rescans (the
-        // list may reorder) by matching its id; default to the first device.
-        g_active = 0;
-        if (g_active_id[0]) {
-            for (int i = 0; i < g_count; i++) {
-                if (strcmp(g_devices[i].id, g_active_id) == 0) { g_active = i; break; }
-            }
-        }
-
-        // Run the active device; picking a different device (list/swipe) reopens
-        // it immediately (no rescan). Only a dropped connection breaks out.
+        // Run the active device; picking another device (list/swipe) reopens it
+        // immediately (no rescan). Only a dropped connection breaks out.
         session_result_t r;
         do {
             r = run_session();
         } while (r == SESSION_SWITCHED);
+        state_lock();
         strlcpy(g_active_id, g_devices[g_active].id, sizeof(g_active_id));
+        state_unlock();
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }

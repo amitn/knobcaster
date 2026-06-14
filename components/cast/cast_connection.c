@@ -34,7 +34,7 @@ cast_conn_t *cast_conn_open(esp_ip4_addr_t ip, uint16_t port)
 
     esp_tls_cfg_t cfg = {
         .skip_common_name = true,   // self-signed; no CN check
-        .timeout_ms = 10000,        // handshake timeout
+        .timeout_ms = 4000,         // handshake timeout (fail fast on bad devices)
     };
     c->tls = esp_tls_init();
     if (!c->tls) { cast_conn_close(c); return NULL; }
@@ -126,6 +126,6 @@ cast_rx_t cast_conn_recv(cast_conn_t *c, cast_msg_t *out, int timeout_ms)
         return CAST_RX_CLOSED;
     }
     // Header arrived; the body should follow promptly. Use a bounded timeout.
-    if (read_n(c, c->recv_buf, len, 3000) != 1) return CAST_RX_CLOSED;
+    if (read_n(c, c->recv_buf, len, 800) != 1) return CAST_RX_CLOSED;
     return cast_msg_decode(c->recv_buf, len, out) ? CAST_RX_MSG : CAST_RX_CLOSED;
 }
