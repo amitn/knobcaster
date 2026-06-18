@@ -101,3 +101,9 @@ uitest:
 # the COM port). Builds first so the merged image is current.
 web-flash-local port="8000": build
     uv run python scripts/web_flash_local.py {{port}}
+
+# Cut the next release: bump the latest vX.Y.Z tag and push it (triggers the
+# Release + Web Flasher workflows). Default bumps patch; pass minor/major.
+# Preview without tagging:  just release patch --dry-run
+release level="patch" *flags="":
+    uv run python scripts/release.py {{level}} {{flags}}
