@@ -77,7 +77,7 @@ Two FreeRTOS tasks plus LVGL's tick, all pinned deliberately:
   + JPEG decode of cover art, handed to the UI via `ui_set_art()`. Never blocks
   the UI or net task; requests coalesce to the latest track.
 - **`haptics` task** (`components/bsp/haptics.c`): DRV2605 I2C writes for the
-  per-detent click, so the encoder poll never blocks on I2C.
+  per-detent click, so the encoder ISR never blocks on I2C.
 
 They communicate through:
 - **Commands queue** (`ui_task` → `net_task`): `CastCommand{ deviceId, verb, arg }`.
@@ -93,26 +93,23 @@ knob/touch ──intent──▶ ui_task ──CastCommand──▶ [queue] ─�
                           └────────AppState snapshot────────────┘
 ```
 
-A third small task, **`enc_task`** (in `bsp/knob.c`), polls the PCNT counter
-every ~4 ms to decode detents (one per departure from 0, anti-glitch). It feeds
-`ui_task` via `knob_take_delta()`.
+The encoder (in `bsp/knob.c`) is **interrupt-driven**: PCNT **watch-points** at
+-1/0/+1 (`pcnt_unit_add_watch_point` + `pcnt_unit_register_event_callbacks`) fire
+the `enc_on_reach` ISR callback only on a real counter change. The anti-glitch
+state machine (one detent per departure from 0, re-arm at 0) lives in the
+callback, which stays minimal — bump `s_enc_accum`, kick haptics via its
+ISR-safe `haptics_click_from_isr()`. No poll task, so the encoder consumes zero
+idle CPU. `ui_task` drains detents via `knob_take_delta()`.
 
-> ⚠️ A polling task **must** sleep a non-zero number of ticks. At
-> `FREERTOS_HZ=100`, `pdMS_TO_TICKS(4)` truncates to 0 and `vTaskDelay(0)` only
-> yields — `enc_task` then busy-spun on core 0, tripped the task watchdog, and
-> starved `net_task` (Wi-Fi/TLS crawled). Fixed by raising the tick to 1 kHz and
-> clamping the delay to ≥ 1 tick. Keep poll-loop tasks *below* the work they feed
-> in priority so a regression can't starve networking.
-
-### TODO — interrupt-driven encoder
-
-Replace `enc_task`'s poll loop with PCNT **watch-point** callbacks
-(`pcnt_unit_register_event_callbacks` + `pcnt_unit_add_watch_point`), so the
-encoder consumes zero idle CPU and wakes only on real counter changes. The
-anti-glitch "one detent per departure from 0" logic would move into the
-callback (which runs in ISR context — keep it minimal, just update `s_enc_accum`
-and signal). Deferred: the polling version works and is cheap at 1 kHz tick;
-this is a cleanliness/efficiency improvement, not a correctness fix.
+> ⚠️ Historical (the bug that motivated the rewrite): the original `enc_task`
+> **polled** the PCNT counter every ~4 ms. A polling task **must** sleep a
+> non-zero number of ticks — at `FREERTOS_HZ=100`, `pdMS_TO_TICKS(4)` truncated
+> to 0 and `vTaskDelay(0)` only yields, so `enc_task` busy-spun on core 0,
+> tripped the task watchdog, and starved `net_task` (Wi-Fi/TLS crawled). That was
+> patched (tick → 1 kHz, delay clamped ≥ 1 tick); the watch-point ISR now removes
+> the poll loop entirely. General rule: a poll-loop task must sleep ≥ 1 tick and
+> sit *below* the work it feeds in priority so a regression can't starve
+> networking.
 
 ## Wi-Fi provisioning (SoftAP + QR + web form)
 

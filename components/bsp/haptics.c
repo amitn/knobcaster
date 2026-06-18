@@ -1,5 +1,5 @@
 // DRV2605 haptic driver: a short "click" per encoder detent. The I2C writes run
-// on a dedicated worker task so callers (e.g. the encoder poll task) never block.
+// on a dedicated worker task so callers (e.g. the encoder PCNT ISR) never block.
 #include "haptics.h"
 #include "board_pins.h"
 #include "board_i2c.h"
@@ -81,4 +81,11 @@ void haptics_click(void)
     if (!s_q) return;
     uint8_t tok = 1;
     xQueueSend(s_q, &tok, 0);   // non-blocking; drop if a click is mid-flight
+}
+
+void haptics_click_from_isr(BaseType_t *hp_woken)
+{
+    if (!s_q) return;
+    uint8_t tok = 1;
+    xQueueSendFromISR(s_q, &tok, hp_woken);   // ISR-safe; drop if queue full
 }

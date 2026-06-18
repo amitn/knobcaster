@@ -51,7 +51,9 @@ Tasks, all cooperating through a command queue + mutex-guarded shared state in
   check would delay the first scan ~30s).
 - **`ui_input_task`** (prio 5): reads knob/touch, sends commands, optimistic
   volume arc. Never blocks on the network.
-- **`enc_task`** (`components/bsp/knob.c`, prio 3): polls the PCNT encoder.
+- **encoder** (`components/bsp/knob.c`): interrupt-driven — PCNT watch-points at
+  -1/0/+1 fire the `enc_on_reach` ISR (no poll task). Detents decoded on
+  departure-from-0; haptics kicked via the ISR-safe `haptics_click_from_isr()`.
 - **`albumart` task** (`components/albumart/`, prio 2, core 1): async HTTPS
   fetch + JPEG decode of cover art, off the UI/net threads. **Invariant: art
   fetch/decode must never block the UI or net task.**
@@ -64,8 +66,10 @@ Components: `cast/` (discovery, connection, session, pure `cast_status` parsers)
 
 - **FreeRTOS tick is 1 kHz** (`CONFIG_FREERTOS_HZ=1000`). A polling task must
   `vTaskDelay` ≥ 1 tick — at the old 100 Hz, `pdMS_TO_TICKS(4)` truncated to 0
-  and the encoder task busy-spun, starving everything (this was the "slow
-  connect" bug). Poll-loop tasks sit below the work they feed in priority.
+  and the (then poll-based) encoder task busy-spun, starving everything (this was
+  the "slow connect" bug). The encoder is now interrupt-driven so it no longer
+  polls, but the rule stands for any poll-loop task: sleep ≥ 1 tick and sit below
+  the work it feeds in priority.
 - **TLS config** (`sdkconfig.defaults`): esp-tls is built in **insecure mode**
   (Cast devices are self-signed) — connect without cert verification, don't
   attach a cert bundle. mbedTLS uses `MBEDTLS_DEFAULT_MEM_ALLOC` so big SSL

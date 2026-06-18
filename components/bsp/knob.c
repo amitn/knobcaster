@@ -4,7 +4,6 @@
 #include "haptics.h"
 
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "driver/pulse_cnt.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
@@ -15,10 +14,13 @@ static const char *TAG = "knob";
 static pcnt_unit_handle_t s_pcnt;
 
 // This board's encoder pulses the PCNT count to +/-1 per detent and returns to 0
-// (it does NOT accumulate). A fast poll task counts ONE detent per departure from
-// 0 (sign = direction) and only re-arms when the count returns to 0. This rejects
-// the glitchy mid-detent reversals that otherwise made one direction "chunky".
-static volatile int s_enc_accum;
+// (it does NOT accumulate). We count ONE detent per departure from 0 (sign =
+// direction) and only re-arm when the count returns to 0 — this rejects the
+// glitchy mid-detent reversals that otherwise made one direction "chunky". The
+// state machine runs in the PCNT watch-point ISR (values -1/0/+1), so the
+// encoder burns zero idle CPU and wakes only on a real counter change.
+static volatile int  s_enc_accum;
+static volatile bool s_armed = true;   // false after a detent until count hits 0
 
 #define LONG_PRESS_US 600000   // hold >= 600ms => long press
 #define DEBOUNCE_US   20000
@@ -46,27 +48,23 @@ static void IRAM_ATTR button_isr(void *arg)
     }
 }
 
-// Fast poll: one accumulated detent per departure from 0, re-armed at 0.
-static void enc_task(void *arg)
+// PCNT watch-point callback (ISR context). Fires when the count reaches -1, 0,
+// or +1: a departure from 0 is one detent (re-arm only back at 0). Keep it
+// minimal — bump the accumulator and kick haptics via its ISR-safe path; the
+// I2C write is deferred to the haptics worker task.
+static bool enc_on_reach(pcnt_unit_handle_t unit,
+                         const pcnt_watch_event_data_t *edata, void *ctx)
 {
-    // Never delay 0 ticks: at low FREERTOS_HZ, pdMS_TO_TICKS(4) rounds to 0 and
-    // vTaskDelay(0) only yields — the task then busy-spins, starves the idle
-    // task (watchdog) and slows everything else. Clamp to >= 1 tick.
-    const TickType_t poll = pdMS_TO_TICKS(4) ? pdMS_TO_TICKS(4) : 1;
-    bool armed = true;
-    for (;;) {
-        int count = 0;
-        if (pcnt_unit_get_count(s_pcnt, &count) == ESP_OK) {
-            if (count == 0) {
-                armed = true;
-            } else if (armed) {
-                s_enc_accum += (count > 0) ? 1 : -1;   // sign = direction
-                armed = false;
-                haptics_click();   // tactile "detent" on a smooth encoder
-            }
-        }
-        vTaskDelay(poll);
+    BaseType_t hp = pdFALSE;
+    int v = edata->watch_point_value;
+    if (v == 0) {
+        s_armed = true;
+    } else if (s_armed) {
+        s_enc_accum += (v > 0) ? 1 : -1;   // sign = direction
+        s_armed = false;
+        haptics_click_from_isr(&hp);       // tactile "detent" on a smooth encoder
     }
+    return hp == pdTRUE;                    // yield if the haptics task woke
 }
 
 void knob_init(void)
@@ -108,6 +106,14 @@ void knob_init(void)
     gpio_set_pull_mode(BOARD_PIN_ENC_A, GPIO_PULLUP_ONLY);
     gpio_set_pull_mode(BOARD_PIN_ENC_B, GPIO_PULLUP_ONLY);
 
+    // Watch the three values the per-detent pulse touches; the callback decodes
+    // detents on departure-from-0. Must be registered before the unit is enabled.
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(s_pcnt, -1));
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(s_pcnt, 0));
+    ESP_ERROR_CHECK(pcnt_unit_add_watch_point(s_pcnt, 1));
+    pcnt_event_callbacks_t cbs = { .on_reach = enc_on_reach };
+    ESP_ERROR_CHECK(pcnt_unit_register_event_callbacks(s_pcnt, &cbs, NULL));
+
     ESP_ERROR_CHECK(pcnt_unit_enable(s_pcnt));
     ESP_ERROR_CHECK(pcnt_unit_clear_count(s_pcnt));
     ESP_ERROR_CHECK(pcnt_unit_start(s_pcnt));
@@ -123,10 +129,6 @@ void knob_init(void)
     esp_err_t e = gpio_install_isr_service(0);   // may already be installed (touch)
     if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(e);
     gpio_isr_handler_add(BOARD_PIN_BTN, button_isr, NULL);
-
-    // Priority 3: below ui_input (5, the consumer of knob deltas) so the input
-    // task always preempts this poller; the 4ms sleep keeps it from hogging CPU.
-    xTaskCreate(enc_task, "enc", 2560, NULL, 3, NULL);
 
     ESP_LOGI(TAG, "knob ready (A=%d B=%d btn=%d)",
              BOARD_PIN_ENC_A, BOARD_PIN_ENC_B, BOARD_PIN_BTN);
