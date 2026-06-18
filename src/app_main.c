@@ -458,6 +458,7 @@ void app_main(void)
 
     int64_t last_discover = 0, last_render = 0, last_ota_check = 0;
     char    cur_id[CAST_ID_LEN] = {0};   // device we're currently rendering
+    int     connect_fails = 0;           // consecutive cold-connect failures (backoff)
 
     for (;;) {
         if (!wifi_is_connected()) {
@@ -529,6 +530,7 @@ void app_main(void)
         // Switched device? Show "connecting..." only when it's not already warm.
         if (strcmp(cur_id, dev.id) != 0) {
             strlcpy(cur_id, dev.id, sizeof(cur_id));
+            connect_fails = 0;                     // fresh device -> reset backoff
             if (!pool_find(dev.id))
                 ui_set_now_playing(dev.friendly_name, "connecting...", "", -1);
             ui_clear_art(); g_shown_art[0] = '\0';  // drop the old speaker's cover
@@ -538,11 +540,27 @@ void app_main(void)
         // Get (or open) the active session. Warm -> instant; cold -> blocking TLS.
         warm_t *act = pool_get(&dev);
         if (!act) {
-            ESP_LOGW(TAG, "connect failed: %s", dev.friendly_name);
-            cur_id[0] = '\0';                      // allow a retry
-            vTaskDelay(pdMS_TO_TICKS(500));
+            // Unreachable (powered off / off Wi-Fi). Back off so we don't hammer
+            // TLS connects at 2 Hz forever, and tell the user — but keep retrying
+            // in case it comes back. Honor device-switch input so they're never
+            // stuck on a dead speaker (volume/transport are dropped — no session).
+            connect_fails++;
+            ESP_LOGW(TAG, "can't reach %s (attempt %d)", dev.friendly_name, connect_fails);
+            ui_set_now_playing(dev.friendly_name, "can't reach speaker", "swipe to switch", -1);
+            cmd_t sc;
+            while (xQueueReceive(g_cmd_q, &sc, 0)) {
+                if (sc.kind == CMD_SWIPE) {
+                    state_lock(); g_active = (g_active + sc.arg + g_count) % g_count; state_unlock();
+                } else if (sc.kind == CMD_SELECT) {
+                    state_lock(); if (sc.arg >= 0 && sc.arg < g_count) g_active = sc.arg; state_unlock();
+                }
+            }
+            int shift = connect_fails - 1; if (shift > 5) shift = 5;   // 0.5,1,2,4,8,16s
+            int delay_ms = 500 << shift; if (delay_ms > 15000) delay_ms = 15000;
+            vTaskDelay(pdMS_TO_TICKS(delay_ms));
             continue;
         }
+        connect_fails = 0;                         // connected -> reset backoff
         state_lock(); strlcpy(g_active_id, dev.id, sizeof(g_active_id)); state_unlock();
 
         // Apply queued UI commands to the active session.

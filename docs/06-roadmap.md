@@ -104,7 +104,11 @@ Cast protocol) before polishing UX.
       (Latin + Hebrew) with `LV_USE_BIDI` for RTL; `just gen-font` (fonttools)
 - [x] **Now-playing title refresh** on track change: re-request media `GET_STATUS`
       when a status push omits the `media` block (`has_media`)
-- [ ] Error/edge handling: device disappears, app stops, Wi-Fi drop (Wi-Fi drop ✓)
+- [~] Error/edge handling: Wi-Fi drop ✓; **unreachable speaker** ✓ (powered
+      off / off Wi-Fi → exponential connect backoff 0.5–15 s + "can't reach
+      speaker" UI, and device-switch input still honored so you're never stuck on
+      a dead speaker — `app_main` net loop). Still TODO: device vanishes from the
+      list mid-session, receiver app stops (idle render)
 - [ ] Boot time + memory budget pass
 - [x] **OTA updates** from GitHub Releases (`components/ota`): checks
       `releases/latest`, compares the tag to the running image's version, pulls
