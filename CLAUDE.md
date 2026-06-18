@@ -57,10 +57,13 @@ Tasks, all cooperating through a command queue + mutex-guarded shared state in
 - **`albumart` task** (`components/albumart/`, prio 2, core 1): async HTTPS
   fetch + JPEG decode of cover art, off the UI/net threads. **Invariant: art
   fetch/decode must never block the UI or net task.**
+- **`ota` task** (`components/ota/`, prio 2): GitHub-Releases OTA. Idle until the
+  net loop nudges it (`ota_check_now`, ~60s after boot then every 6h); checks
+  `releases/latest`, updates if the tag is newer than the running image.
 
 Components: `cast/` (discovery, connection, session, pure `cast_status` parsers),
 `ui/` (LVGL screens + embedded font), `bsp/` (display/touch/knob), `albumart/`,
-`wifi/`, `provisioning/`.
+`ota/`, `wifi/`, `provisioning/`.
 
 ## Gotchas / hard-won lessons
 
@@ -86,6 +89,15 @@ Components: `cast/` (discovery, connection, session, pure `cast_status` parsers)
   `LV_USE_BIDI` handles RTL. Keep UI symbols on Montserrat.
 - **LVGL image cache** is keyed by the `src` pointer — when reusing one image
   descriptor for new pixels, `lv_image_cache_drop()` it before repointing.
+- **OTA** (`components/ota`): the CA cert bundle (`MBEDTLS_CERTIFICATE_BUNDLE`)
+  coexists with esp-tls insecure mode — verification is *per connection*. Cast
+  attaches no bundle and skips verify; OTA attaches `esp_crt_bundle_attach` and
+  is CA-checked. The running image version is `esp_app_get_description()->version`
+  — stamped from the git tag via a CI-written `version.txt` (verified: PlatformIO's
+  ESP-IDF build does read project-root `version.txt`; it's gitignored). Releases
+  flow: push a `v*` tag → `release.yml` builds + attaches `firmware.bin`; the knob
+  pulls it from `releases/latest`. Rollback is on, so a freshly-OTA'd image must
+  reach `ota_mark_valid()` (called once Wi-Fi is up) or the bootloader reverts.
 
 ## Conventions
 

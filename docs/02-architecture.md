@@ -62,6 +62,7 @@ for the knob), built on `esp-tls`, the IDF `mdns` component, `cJSON`, and
 | `hal/display` | SH8601 QSPI panel + LVGL flush + CST816 touch | `esp_lcd_sh8601` + `esp_lcd_touch_cst816s` + `esp_lvgl_port` |
 | `bsp/haptics` | DRV2605 click per detent, on a worker task (I2C 0x5A, shared bus) | `haptics_start()`, `haptics_click()` |
 | `albumart` | Async cover-art fetch (HTTPS) + JPEG decode → UI background | `albumart_start()`, `albumart_request(url)`, `albumart_clear()` |
+| `ota` | GitHub-Releases firmware update (CA-bundle HTTPS, rollback) on a worker | `ota_start()`, `ota_check_now()`, `ota_mark_valid()` |
 
 ## Concurrency model
 
@@ -78,6 +79,11 @@ Two FreeRTOS tasks plus LVGL's tick, all pinned deliberately:
   the UI or net task; requests coalesce to the latest track.
 - **`haptics` task** (`components/bsp/haptics.c`): DRV2605 I2C writes for the
   per-detent click, so the encoder ISR never blocks on I2C.
+- **`ota` task** (`components/ota`, low prio): when nudged by the net loop
+  (`ota_check_now`), queries GitHub `releases/latest`, and if the tag is newer
+  than the running image pulls `firmware.bin` over CA-bundle HTTPS into the
+  inactive slot and reboots. Idle (one notify wait) the rest of the time, so it
+  never touches the UI/net path until an update is actually due.
 
 They communicate through:
 - **Commands queue** (`ui_task` → `net_task`): `CastCommand{ deviceId, verb, arg }`.

@@ -31,6 +31,7 @@
 #include "fbdump.h"
 #include "ui.h"
 #include "albumart.h"
+#include "ota.h"
 
 // Optional compiled-in Wi-Fi creds (include/secrets.h). If absent, the device
 // falls back to on-device web provisioning (SoftAP + QR + form).
@@ -447,9 +448,15 @@ void app_main(void)
     }
     ui_set_wifi(true);
 
+    // Reaching here means screen + Wi-Fi + init all came up cleanly, so if we
+    // just booted a freshly-OTA'd image, confirm it (cancel the rollback). Then
+    // arm the OTA worker; the net loop drives the periodic GitHub check.
+    ota_start();
+    ota_mark_valid();
+
     cast_discovery_init();
 
-    int64_t last_discover = 0, last_render = 0;
+    int64_t last_discover = 0, last_render = 0, last_ota_check = 0;
     char    cur_id[CAST_ID_LEN] = {0};   // device we're currently rendering
 
     for (;;) {
@@ -497,6 +504,14 @@ void app_main(void)
                     if (strcmp(g_devices[i].id, g_active_id) == 0) { g_active = i; break; }
             }
             state_unlock();
+        }
+
+        // Periodic OTA check (~60s after boot, then every 6h). This only nudges
+        // the worker; the GitHub query + download happen off this loop.
+        if (last_ota_check == 0 ? now >= 60000000
+                                : now - last_ota_check >= 6LL * 3600 * 1000000) {
+            last_ota_check = now;
+            ota_check_now();
         }
 
         // Snapshot the active device under lock.

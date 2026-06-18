@@ -106,7 +106,13 @@ Cast protocol) before polishing UX.
       when a status push omits the `media` block (`has_media`)
 - [ ] Error/edge handling: device disappears, app stops, Wi-Fi drop (Wi-Fi drop ✓)
 - [ ] Boot time + memory budget pass
-- [ ] OTA updates (dual-app partitions already provisioned)
+- [x] **OTA updates** from GitHub Releases (`components/ota`): checks
+      `releases/latest`, compares the tag to the running image's version, pulls
+      `firmware.bin` over CA-bundle-verified HTTPS into the inactive slot, reboots
+      with rollback protection (`esp_https_ota` + `BOOTLOADER_APP_ROLLBACK_ENABLE`;
+      net loop checks ~60s after boot then every 6h). Release CI
+      (`.github/workflows/release.yml`) builds + attaches the asset on a `v*` tag,
+      stamping the tag into `version.txt` — built, **needs on-device validation**
 - [x] **Wi-Fi provisioning** — SoftAP + on-LCD QR + web form (`192.168.4.1`) +
       captive-portal DNS (53/udp → 192.168.4.1, so the form auto-opens), creds
       saved to NVS, Wi-Fi status icon (`components/provisioning`, `wifi`,

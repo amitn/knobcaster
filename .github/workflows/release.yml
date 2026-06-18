@@ -1,0 +1,60 @@
+name: Release
+
+# Tag a commit `vX.Y.Z` and push it -> build the firmware and attach
+# `firmware.bin` to the GitHub Release. The knob's OTA worker (components/ota)
+# pulls that asset from `releases/latest`. The tag is written into version.txt so
+# the embedded image version (esp_app_get_description()->version) matches the tag.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build/release (e.g. v0.2.0)'
+        required: true
+
+permissions:
+  contents: write   # create the release + upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags, for the git-describe fallback
+
+      - name: Install uv (+ cache the venv)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Cache PlatformIO platforms & toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'boards/**', 'sdkconfig.defaults', 'src/idf_component.yml') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      # Embed the release tag as the firmware version (ESP-IDF reads version.txt).
+      - name: Stamp firmware version
+        run: echo "${{ inputs.tag || github.ref_name }}" > version.txt
+
+      - name: Sync toolchain (PlatformIO in the uv venv)
+        run: just setup
+
+      - name: Build firmware
+        run: just build
+
+      - name: Publish release with firmware.bin
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: .pio/build/knob/firmware.bin
+          generate_release_notes: true

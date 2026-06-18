@@ -46,6 +46,16 @@ CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
 # art) with MBEDTLS_ERR_SSL_BAD_INPUT_DATA (-0x0087). Buffers live in PSRAM now, so
 # the memory it saved isn't needed.
 
+# --- OTA: GitHub Releases firmware updates (components/ota) ---
+# Verify GitHub's TLS with the bundled CA roots. esp-tls insecure mode (above) is
+# opt-in per connection (Cast attaches no bundle and skips verify); OTA attaches
+# esp_crt_bundle_attach, so the two coexist — Cast stays unverified, OTA is CA-checked.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# Boot a freshly-OTA'd image in "pending verify"; the app marks itself valid after
+# a healthy boot (ota_mark_valid), else the bootloader rolls back to the old slot.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # --- mDNS / lwIP ---
 CONFIG_LWIP_IPV4=y
 

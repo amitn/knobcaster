@@ -9,6 +9,9 @@ sdkconfig.knob
 sdkconfig.old
 managed_components/
 dependencies.lock
+# Firmware version stamp — written transiently by the Release CI from the tag
+# (ESP-IDF reads it for esp_app_get_description()->version). Not committed.
+version.txt
 
 # uv / Python
 .venv/
