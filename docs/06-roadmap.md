@@ -138,8 +138,10 @@ Cast protocol) before polishing UX.
    across receiver apps (Spotify/YT Music/default). Needs device testing.
 5. **Groups** — volume math for Cast groups (member vs group level) and whether
    transport even applies.
-6. **Secondary ESP32** — confirmed unused? Any shared-bus contention (audio DAC
-   signals reportedly reach both MCUs)?
+6. ~~Secondary ESP32~~ — **resolved: it runs stock Bluetooth A2DP/AVRC audio**
+   (its CH340 console `1a86:7523` shows a BT boot log). Not a bridge for the S3
+   and not unused; we don't program it. Flash only the S3's "USB JTAG/serial
+   debug unit" (`303a:1001`). See [01-hardware.md](01-hardware.md#usb--which-chip-is-which-important-for-flashing).
 7. **Provisioning** — acceptable to ship compiled-in creds for v1, or is
    BLE/portal provisioning required from the start?
 

@@ -24,13 +24,28 @@ this exact board** — every pin, including the push-button, is now confirmed:
 | Item | Value |
 |------|-------|
 | Main MCU | **ESP32-S3R8** (dual-core LX7 @ up to 240 MHz) — *we program this* |
-| Secondary MCU | ESP32-U4WDH — USB-UART bridge / co-processor (**unused** by us) |
+| Secondary MCU | ESP32-U4WDH — runs stock **Bluetooth A2DP/AVRC audio** firmware (not unused; we don't touch it) |
 | Flash | 16 MB (QIO) |
 | PSRAM | 8 MB **octal (OPI)** — required; LVGL buffers + TLS live here |
 | Connectivity | 2.4 GHz Wi-Fi b/g/n, BT5 (BLE) + BT Classic |
 
 > PlatformIO board profile: custom `boards/esp32s3-knob.json` (16 MB flash, 8 MB
 > OPI PSRAM). PSRAM set octal via `CONFIG_SPIRAM_MODE_OCT` in `sdkconfig.defaults`.
+
+### USB / which chip is which (important for flashing)
+
+Two distinct serial devices appear, one per MCU — **flash the S3, never the CH340**:
+
+| Enumerates as | VID:PID | MCU | Use |
+|---------------|---------|-----|-----|
+| **USB JTAG/serial debug unit** | `303a:1001` | ESP32-S3 (ours) | flash + monitor (`/dev/ttyACM*`) |
+| **USB-SERIAL CH340** | `1a86:7523` | secondary ESP32 (BT audio) | *wrong target* — leave alone |
+
+Selecting the CH340 in a flasher (e.g. ESP Web Tools) talks to the secondary
+ESP32 (a plain ESP32 running Bluetooth A2DP), which fails as "board not
+supported" and shows a BT/`A2DP`/`AVRC` boot log. The S3's native USB may need a
+specific USB-C port / a USB-select switch on the board, or BOOT+RESET to force
+download mode, before it enumerates.
 
 ## Display — SH8601 (QSPI)
 
