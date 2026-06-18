@@ -113,6 +113,10 @@ Cast protocol) before polishing UX.
       net loop checks ~60s after boot then every 6h). Release CI
       (`.github/workflows/release.yml`) builds + attaches the asset on a `v*` tag,
       stamping the tag into `version.txt` — built, **needs on-device validation**
+- [x] **Web flasher** for the *initial* USB flash (ESP Web Tools / WebSerial):
+      `web-flasher/` + `web-flasher.yml` build a merged image and deploy the page
+      to GitHub Pages on a `v*` tag (`amitn.github.io/knobcaster`) — needs Pages
+      enabled (Settings → Pages → GitHub Actions) and on-device validation
 - [x] **Wi-Fi provisioning** — SoftAP + on-LCD QR + web form (`192.168.4.1`) +
       captive-portal DNS (53/udp → 192.168.4.1, so the form auto-opens), creds
       saved to NVS, Wi-Fi status icon (`components/provisioning`, `wifi`,

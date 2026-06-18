@@ -40,6 +40,16 @@ Wi-Fi provisioning. See [Features](#features) and the [roadmap](docs/06-roadmap.
 
 ## Quick start
 
+### Flash from your browser (no toolchain)
+
+For a ready-made build, open the **[web flasher](https://amitn.github.io/knobcaster/)**
+in Chrome/Edge on desktop, plug the knob into USB, and click *Install* — it flashes
+over WebSerial, no install required. After that the knob updates itself over the
+air from [GitHub Releases](https://github.com/amitn/knobcaster/releases). To build
+from source instead, read on.
+
+### Build from source
+
 Prerequisites: [`uv`](https://docs.astral.sh/uv/) and [`just`](https://github.com/casey/just).
 PlatformIO itself is installed *into a uv-managed venv* — you do **not** need a
 global PlatformIO.

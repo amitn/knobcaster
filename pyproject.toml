@@ -30,5 +30,6 @@ package = false
 [dependency-groups]
 dev = [
     "brotli>=1.2.0",
+    "esptool>=5.3.0",
     "fonttools>=4.63.0",
 ]

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cast Knob — Web Flasher</title>
+  <!-- ESP Web Tools: flashes the board over WebSerial straight from the browser. -->
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      font: 16px/1.6 system-ui, sans-serif; background: #0b0b0d; color: #e8e8ea;
+    }
+    main { max-width: 34rem; padding: 2rem 1.5rem; text-align: center; }
+    h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+    .sub { color: #9aa0a6; margin-top: 0; }
+    ol { text-align: left; color: #c7c9cd; margin: 1.5rem auto; max-width: 28rem; }
+    code { background: #1b1c1f; padding: .1rem .35rem; border-radius: .25rem; }
+    .note { font-size: .85rem; color: #80858b; margin-top: 1.5rem; }
+    esp-web-install-button { margin: 1.25rem 0; }
+    a { color: #64d2ff; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cast Knob — Web Flasher</h1>
+    <p class="sub">Flash the firmware to a Waveshare ESP32-S3-Knob over USB, no toolchain required.</p>
+
+    <ol>
+      <li>Use <strong>Chrome</strong> or <strong>Edge</strong> on desktop (WebSerial isn't in Firefox/Safari).</li>
+      <li>Plug the knob into USB-C and connect the <strong>ESP32-S3 side</strong> (it enumerates as a serial port).</li>
+      <li>Click <em>Install</em>, pick the serial port, and let it flash + erase.</li>
+      <li>On first boot it starts a <code>CastKnob-XXXX</code> Wi-Fi AP — join it to set up your network.</li>
+    </ol>
+
+    <esp-web-install-button manifest="./manifest.json"></esp-web-install-button>
+
+    <p class="note">
+      After this initial flash, the knob updates itself over the air from
+      <a href="https://github.com/amitn/knobcaster/releases">GitHub Releases</a> — no cable needed again.
+    </p>
+  </main>
+</body>
+</html>

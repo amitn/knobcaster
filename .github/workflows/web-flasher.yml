@@ -1,0 +1,91 @@
+name: Web Flasher
+
+# On a v* tag: build the firmware, merge the flash parts into one image, and
+# deploy the ESP Web Tools page (web-flasher/) to GitHub Pages so a fresh board
+# can be flashed from the browser over USB. Pairs with the Release workflow
+# (which publishes firmware.bin for OTA).
+#
+# Requires: Settings -> Pages -> Source = "GitHub Actions" (one-time).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag/version to publish (e.g. v0.2.0)'
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Don't cancel an in-flight Pages deploy; let it finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv (+ cache the venv)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Cache PlatformIO platforms & toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'boards/**', 'sdkconfig.defaults', 'src/idf_component.yml') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Stamp firmware version
+        run: echo "${{ inputs.tag || github.ref_name }}" > version.txt
+
+      - name: Sync toolchain (PlatformIO + esptool in the uv venv)
+        run: just setup
+
+      - name: Build firmware
+        run: just build
+
+      # Assemble the Pages site: the static flasher page, a versioned manifest,
+      # and a single merged image (bootloader + partitions + otadata + app).
+      - name: Assemble flasher site
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          mkdir -p site
+          cp web-flasher/index.html site/
+          sed "s/__VERSION__/${TAG}/" web-flasher/manifest.json > site/manifest.json
+          B=.pio/build/knob
+          uv run esptool --chip esp32s3 merge-bin -o site/firmware-merged.bin \
+            --flash-mode dio --flash-freq 80m --flash-size 16MB \
+            0x0     "$B/bootloader.bin" \
+            0x8000  "$B/partitions.bin" \
+            0xe000  "$B/ota_data_initial.bin" \
+            0x10000 "$B/firmware.bin"
+          ls -la site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
