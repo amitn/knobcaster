@@ -17,3 +17,9 @@ void haptics_click(void);
 // Sets *hp_woken to pdTRUE if a higher-priority task was woken, so the caller
 // can request a context switch on ISR exit. No-op if haptics failed to init.
 void haptics_click_from_isr(BaseType_t *hp_woken);
+
+// Play a specific DRV2605 ROM effect (1..123) once — for on-device tuning.
+void haptics_play_effect(uint8_t effect);
+
+// Set which DRV2605 effect haptics_click()/the detent uses (1..123).
+void haptics_set_click_effect(uint8_t effect);

@@ -12,7 +12,8 @@
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 
-#include "knob.h"   // debug input injection
+#include "knob.h"      // debug input injection
+#include "haptics.h"   // on-device haptics effect tuning
 
 #define FB_W 360
 #define FB_H 360
@@ -72,9 +73,12 @@ static void dump_now(void)
     lvgl_port_unlock();
 }
 
-// Serial debug console: 'S' screenshot; +/- knob; p/l press/long-press.
+// Serial debug console: 'S' screenshot; +/- knob; p/l press/long-press;
+// haptics tuning: h/g next/prev DRV2605 effect (+play), f replay, c adopt as detent.
 static void fbdump_task(void *arg)
 {
+    static const char *TAG = "fbdbg";
+    int effect = 1;   // current haptics test effect (DRV2605 ROM 1..123)
     uint8_t c;
     for (;;) {
         if (usb_serial_jtag_read_bytes(&c, 1, pdMS_TO_TICKS(200)) != 1) continue;
@@ -84,6 +88,12 @@ static void fbdump_task(void *arg)
         case '-': case '_': knob_inject_delta(-1);   break;
         case 'p': case 'P': knob_inject_press();      break;
         case 'l': case 'L': knob_inject_long_press(); break;
+        case 'h': effect = (effect % 123) + 1;       goto play;
+        case 'g': effect = (effect + 121) % 123 + 1; goto play;
+        case 'f': play: haptics_play_effect((uint8_t)effect);
+                  ESP_LOGI(TAG, "haptics effect %d/123", effect);   break;
+        case 'c': haptics_set_click_effect((uint8_t)effect);
+                  ESP_LOGI(TAG, "detent click effect = %d", effect); break;
         default: break;
         }
     }

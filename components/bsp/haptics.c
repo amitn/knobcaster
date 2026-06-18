@@ -25,6 +25,7 @@ static const char *TAG = "haptics";
 
 static i2c_master_dev_handle_t s_dev;
 static QueueHandle_t           s_q;
+static volatile uint8_t        s_click_effect = DRV_EFFECT_CLICK;  // detent waveform (tunable)
 
 static esp_err_t drv_write(uint8_t reg, uint8_t val)
 {
@@ -32,13 +33,13 @@ static esp_err_t drv_write(uint8_t reg, uint8_t val)
     return i2c_master_transmit(s_dev, buf, sizeof(buf), 50);
 }
 
-// Worker: each queued token triggers one waveform playback (~tens of ms).
+// Worker: each queued token is the DRV2605 ROM effect number to play (~tens ms).
 static void haptics_task(void *arg)
 {
-    uint8_t tok;
+    uint8_t effect;
     for (;;) {
-        if (xQueueReceive(s_q, &tok, portMAX_DELAY) != pdTRUE) continue;
-        drv_write(DRV_REG_WAVESEQ1, DRV_EFFECT_CLICK);
+        if (xQueueReceive(s_q, &effect, portMAX_DELAY) != pdTRUE) continue;
+        drv_write(DRV_REG_WAVESEQ1, effect);
         drv_write(DRV_REG_WAVESEQ2, 0x00);   // end of sequence
         drv_write(DRV_REG_GO, 0x01);         // play
     }
@@ -79,13 +80,24 @@ void haptics_start(void)
 void haptics_click(void)
 {
     if (!s_q) return;
-    uint8_t tok = 1;
-    xQueueSend(s_q, &tok, 0);   // non-blocking; drop if a click is mid-flight
+    uint8_t e = s_click_effect;
+    xQueueSend(s_q, &e, 0);   // non-blocking; drop if a click is mid-flight
 }
 
 void haptics_click_from_isr(BaseType_t *hp_woken)
 {
     if (!s_q) return;
-    uint8_t tok = 1;
-    xQueueSendFromISR(s_q, &tok, hp_woken);   // ISR-safe; drop if queue full
+    uint8_t e = s_click_effect;
+    xQueueSendFromISR(s_q, &e, hp_woken);   // ISR-safe; drop if queue full
+}
+
+void haptics_play_effect(uint8_t effect)
+{
+    if (!s_q || effect < 1 || effect > 123) return;   // DRV2605 ROM: effects 1..123
+    xQueueSend(s_q, &effect, 0);
+}
+
+void haptics_set_click_effect(uint8_t effect)
+{
+    if (effect >= 1 && effect <= 123) s_click_effect = effect;
 }

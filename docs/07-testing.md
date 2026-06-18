@@ -78,9 +78,15 @@ for driving the UI without the physical knob/touch (and for scripted tests):
 | `+` / `-` | knob rotate CW / CCW (one detent) — volume or speaker-pick per mode |
 | `p` | knob short press (toggle dial mode) |
 | `l` | knob long press (mute) |
+| `h` / `g` | haptics: next / previous DRV2605 effect (plays it; logs the number) |
+| `f` | haptics: replay the current effect |
+| `c` | haptics: adopt the current effect as the detent click (turn the knob to feel it) |
 
 Implemented by injecting at the knob source (`knob_inject_delta/press/...`) so all
-downstream logic runs unchanged.
+downstream logic runs unchanged. Haptics keys drive `haptics_play_effect()` /
+`haptics_set_click_effect()` for on-device actuator tuning (DRV2605 ROM effects
+1..123). Once you settle on an effect, bake it in as `s_click_effect`'s default
+in `components/bsp/haptics.c`.
 
 **TODO — extend the debug console:**
 - [ ] Absolute volume set (e.g. `v50`), and mute toggle
