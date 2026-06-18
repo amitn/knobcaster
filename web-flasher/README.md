@@ -17,6 +17,18 @@ substitutes the tag into `manifest.json`, and deploys `index.html` +
 `manifest.json` + `firmware-merged.bin` to **GitHub Pages** (same origin, so no
 CORS). The flasher then lives at `https://amitn.github.io/knobcaster/`.
 
+## Test it locally (no deploy)
+
+```bash
+just web-flash-local        # builds, merges, serves http://localhost:8000
+```
+
+Open the printed `http://localhost:<port>` in Chrome/Edge — WebSerial treats
+localhost as a secure context, so flashing works over plain HTTP, exactly like the
+deployed page. On WSL, detach the board from `usbipd` first so the **Windows**
+browser sees the COM port (pick the *ESP32-S3* / "USB JTAG/serial debug unit"
+port, not the CH340 bridge).
+
 ## One-time setup
 
 GitHub Pages must be enabled with **Settings → Pages → Source: GitHub Actions**,

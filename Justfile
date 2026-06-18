@@ -93,3 +93,11 @@ gen-font:
 # uitest_shots/ + write EXPECTATIONS.md (an agent/human verifies the shots).
 uitest:
     uv run python scripts/uitest.py {{ if PORT != "auto" { PORT } else { "" } }}
+
+# Serve the web flasher locally for testing (same page as GitHub Pages, but from
+# http://localhost). WebSerial treats localhost as a secure context, so flashing
+# works without HTTPS — no deploy needed. Open the URL in Chrome/Edge on the
+# machine the board is plugged into (on WSL: detach from usbipd so Windows sees
+# the COM port). Builds first so the merged image is current.
+web-flash-local port="8000": build
+    uv run python scripts/web_flash_local.py {{port}}
