@@ -94,6 +94,14 @@ Components: `cast/` (discovery, connection, session, pure `cast_status` parsers)
   `LV_USE_BIDI` handles RTL. Keep UI symbols on Montserrat.
 - **LVGL image cache** is keyed by the `src` pointer — when reusing one image
   descriptor for new pixels, `lv_image_cache_drop()` it before repointing.
+- **Wi-Fi creds source differs local vs CI/OTA.** `include/secrets.h` is
+  gitignored, so *local* builds with it compile creds in and connect without NVS
+  (you never see provisioning). *CI / web-flashed / OTA* builds have **no**
+  `secrets.h` → they rely on NVS, and a blank NVS shows the setup-QR portal on
+  first boot. OTA writes only the app slot — it never touches NVS — so once a
+  device is provisioned (creds saved to NVS) it reconnects across reboots *and*
+  updates. Symptom of confusion: a board that "lost Wi-Fi after OTA" was actually
+  running compiled creds locally, then OTA'd to a CI build without them.
 - **OTA** (`components/ota`): the CA cert bundle (`MBEDTLS_CERTIFICATE_BUNDLE`)
   coexists with esp-tls insecure mode — verification is *per connection*. Cast
   attaches no bundle and skips verify; OTA attaches `esp_crt_bundle_attach` and
