@@ -94,6 +94,11 @@ static bool download_and_install(void)
         .timeout_ms        = 20000,
         .keep_alive_enable = true,
         .user_agent        = OTA_UA,
+        // GitHub redirects to a long signed objects.githubusercontent.com URL
+        // (X-Amz-* query params); the default 512 B header/request buffers
+        // overflow ("HTTP_CLIENT: Out of buffer"). Give them room.
+        .buffer_size       = 4096,
+        .buffer_size_tx    = 4096,
     };
     esp_https_ota_config_t ota_cfg = { .http_config = &http };
 

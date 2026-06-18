@@ -116,7 +116,11 @@ Cast protocol) before polishing UX.
       with rollback protection (`esp_https_ota` + `BOOTLOADER_APP_ROLLBACK_ENABLE`;
       net loop checks ~60s after boot then every 6h). Release CI
       (`.github/workflows/release.yml`) builds + attaches the asset on a `v*` tag,
-      stamping the tag into `version.txt` — built, **needs on-device validation**
+      stamping the tag into `version.txt`. **Validated on-device** (v0.1.0→v0.1.3
+      self-update: download, write inactive slot, reboot, `mark_valid`/rollback,
+      "up to date"). Fix needed: GitHub's signed redirect URL overflowed the
+      default `esp_http_client` buffers ("Out of buffer") → set
+      `buffer_size`/`buffer_size_tx` to 4096 in the OTA client.
 - [x] **Web flasher** for the *initial* USB flash (ESP Web Tools / WebSerial):
       `web-flasher/` + `web-flasher.yml` build a merged image and deploy the page
       to GitHub Pages on a `v*` tag (`amitn.github.io/knobcaster`) — needs Pages
