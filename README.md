@@ -1,6 +1,7 @@
 # ESP32-S3 Cast Knob
 
 [![CI](https://github.com/amitn/knobcaster/actions/workflows/ci.yml/badge.svg)](https://github.com/amitn/knobcaster/actions/workflows/ci.yml)
+[![Flash in browser](https://img.shields.io/badge/flash%20in%20browser-WebSerial-1f6feb?logo=googlechrome&logoColor=white)](https://amitn.github.io/knobcaster/)
 
 > A desk knob that controls every Google Cast / Chromecast speaker on your Wi-Fi —
 > turn for volume, press to pick a speaker, with now-playing, album art, and
@@ -37,16 +38,24 @@ Wi-Fi provisioning. See [Features](#features) and the [roadmap](docs/06-roadmap.
   app supports.
 - **Cast groups** — multi-room groups are discovered and controllable.
 - **Wi-Fi setup on-device** — QR + captive portal, no rebuild (see below).
+- **Flash & update without a toolchain** — first flash from the browser over
+  [WebSerial](https://amitn.github.io/knobcaster/); after that the knob updates
+  itself **over the air** from GitHub Releases.
 
 ## Quick start
 
-### Flash from your browser (no toolchain)
+### Flash from your browser (no toolchain) ⚡
 
-For a ready-made build, open the **[web flasher](https://amitn.github.io/knobcaster/)**
-in Chrome/Edge on desktop, plug the knob into USB, and click *Install* — it flashes
-over WebSerial, no install required. After that the knob updates itself over the
-air from [GitHub Releases](https://github.com/amitn/knobcaster/releases). To build
-from source instead, read on.
+The fastest way to get a board running — no `uv`, PlatformIO, or `esptool`:
+
+1. Open the **[web flasher → amitn.github.io/knobcaster](https://amitn.github.io/knobcaster/)**
+   in **Chrome or Edge on desktop** (WebSerial isn't supported in Firefox/Safari).
+2. Plug the knob into USB-C (the **ESP32-S3 side** — it appears as a serial port).
+3. Click **Install**, pick the port, and let it flash + erase.
+
+It flashes the latest [release](https://github.com/amitn/knobcaster/releases) over
+WebSerial; afterwards the knob updates itself **over the air**, so you never need a
+cable again. Prefer to build it yourself? Read on.
 
 ### Build from source
 
