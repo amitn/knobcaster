@@ -443,7 +443,12 @@ void app_main(void)
         ui_set_now_playing("Cast Knob", "connecting...", ssid, -1);
         wifi_connect_to(ssid, pass);
     }
-    if (!wifi_wait_connected(have ? 15000 : 1)) {
+    // With saved creds, be patient: WPA3-SAE association can be rate-limited
+    // ("Association refused temporarily") and take well over 15 s. The driver
+    // auto-reconnects with backoff in the background, so just wait longer before
+    // falling back to the portal (which would stop that auto-reconnect). No creds
+    // at all -> portal immediately.
+    if (!wifi_wait_connected(have ? 45000 : 1)) {
         run_provisioning();                 // SoftAP + QR + web form
     }
     ui_set_wifi(true);
