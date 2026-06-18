@@ -71,8 +71,19 @@ int cast_discovery_scan(cast_device_t *out, int max_devices, int timeout_ms)
             }
         }
 
-        // Group = model says "group", or capabilities bit 0x20 (multizone group).
         int ca_bits = ca ? atoi(ca) : 0;
+
+        // Hide stereo-pair member speakers: when two speakers are bonded into a
+        // stereo pair, each advertises capability bit 0x100 (the pair's group
+        // endpoint does NOT). Skip the members so only the pair's group shows —
+        // controlling the individual halves of a stereo pair isn't wanted.
+        // (Verified against two pairs on a real network; see docs/03-cast-protocol.)
+        if (ca_bits & 0x100) {
+            ESP_LOGD(TAG, "hiding stereo-pair member: %s", d->friendly_name);
+            continue;   // don't add to out[]; reuse this slot next iteration
+        }
+
+        // Group = model says "group", or capabilities bit 0x20 (multizone group).
         d->is_group = contains_ci(md, "group") || (ca_bits & 0x20);
 
         n++;

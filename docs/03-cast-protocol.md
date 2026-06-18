@@ -44,6 +44,26 @@ ESP-IDF: `mdns_query_ptr("_googlecast", "_tcp", timeout, max, &results)`, then w
 > Cast **groups** also advertise here; distinguish via the `ca`/`md` TXT and
 > handle group volume semantics (group volume is relative to member volumes).
 
+### `ca` capability bits we rely on
+
+The `ca` value is a decimal bitmask. Bits observed/used (decoded from a real
+network of ~16 devices incl. two stereo pairs):
+
+| Bit | Meaning | Use |
+|-----|---------|-----|
+| `0x20` | multizone **group** endpoint | `is_group` (with `md` contains "group") |
+| `0x100` | **stereo-pair member** speaker | hidden from the list (see below) |
+
+**Stereo-pair filtering.** When two speakers are bonded into a stereo pair, each
+*member* advertises `ca & 0x100`; the pair's **group** endpoint does **not**. So
+`cast_discovery_scan()` drops any device with `0x100` set — only the pair's group
+entry remains, which is the thing you actually cast to. This cleanly hid all four
+members of two pairs ("Master Bedroom Stereo", "Kitchen Speakers") while keeping
+both group entries and every multi-room group/standalone speaker. `0x100` was the
+reliable signal — `0x200` looked like "stereo" on one pair but did **not** hold on
+the second, and mDNS carries no group *membership* list (only the group↔leader
+link via `rm`/`bs`), so per-group multizone queries would otherwise be needed.
+
 ## 2. Transport — TLS to port 8009 {#tls}
 
 - Open a **TLS** socket to `deviceIp:8009`.
