@@ -45,18 +45,20 @@ Selecting the CH340 in a flasher (e.g. ESP Web Tools) talks to the secondary
 ESP32 (a plain ESP32 running Bluetooth A2DP), which fails as "board not
 supported" and shows a BT/`A2DP`/`AVRC` boot log.
 
-**There is ONE Type-C port, routed through an on-board toggle switch** (a
-four-pole double-throw analog switch — "Bidirectional Switchable for
-ESP32-S3/ESP32" per the Waveshare wiki). It connects USB to **either** MCU:
+**There is ONE Type-C port, and the USB-C plug ORIENTATION selects the MCU.** Per
+the Waveshare wiki: *"the two insertion orientations of the Type-C plug connect to
+different download channels"* — a four-pole double-throw analog switch is actuated
+by the connector orientation, so **flipping the cable 180° routes USB to the other
+chip**:
 
-- Switch on the **ESP32-S3** side → "USB JTAG/serial debug unit" (`303a:1001`)
-  enumerates → flash here.
-- Switch on the **ESP32** side → only the CH340 (`1a86:7523`, secondary BT chip)
-  shows.
+- One orientation → **ESP32-S3** "USB JTAG/serial debug unit" (`303a:1001`)
+  enumerates → flash here (`/dev/ttyACM*`).
+- The other → only the CH340 (`1a86:7523`, secondary BT chip) shows
+  (`/dev/ttyUSB*`).
 
-So if a flasher only sees the CH340, **flip the switch to the S3 side**. To enter
-the S3 bootloader: hold the **BOOT** button and power on again (or RESET >1 s).
-The wiki's flow is: toggle to S3 → flash → toggle back to run.
+So if `just flash` / a web flasher only sees the CH340 (no `ttyACM`), **unplug,
+flip the USB-C cable over, and re-plug**. To enter the S3 bootloader: hold the
+**BOOT** button and power on again (or RESET >1 s).
 
 ## Display — SH8601 (QSPI)
 
