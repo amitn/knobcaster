@@ -1,5 +1,7 @@
 # ESP32-S3 Cast Knob
 
+[![CI](https://github.com/amitn/knobcaster/actions/workflows/ci.yml/badge.svg)](https://github.com/amitn/knobcaster/actions/workflows/ci.yml)
+
 > A desk knob that controls every Google Cast / Chromecast speaker on your Wi-Fi —
 > turn for volume, press to pick a speaker, with now-playing, album art, and
 > transport on a round touchscreen. ESP32-S3 + ESP-IDF + LVGL.

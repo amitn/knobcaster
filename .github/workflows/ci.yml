@@ -1,0 +1,71 @@
+name: CI
+
+# Host-only gates that need no hardware: the native unit tests and the firmware
+# compile. Mirrors `just test` and `just build` (both run PlatformIO inside the
+# uv-managed venv). See docs/07-testing.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same ref cancels an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Native unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (+ cache the venv)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Sync toolchain (PlatformIO in the uv venv)
+        run: just setup
+
+      # Pure parsers (cast_proto + cast_status), compiled with the host gcc —
+      # no ESP-IDF toolchain download needed, so this gate is fast.
+      - name: Run host-native tests
+        run: just test
+
+  build:
+    name: Firmware build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (+ cache the venv)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      # The espressif32 platform + Xtensa toolchain + ESP-IDF are ~GB; cache
+      # them across runs keyed on the files that pin the toolchain/components.
+      - name: Cache PlatformIO platforms & toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'boards/**', 'sdkconfig.defaults', 'src/idf_component.yml') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Sync toolchain (PlatformIO in the uv venv)
+        run: just setup
+
+      - name: Compile firmware
+        run: just build

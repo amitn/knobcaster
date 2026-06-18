@@ -54,7 +54,9 @@ Cast protocol) before polishing UX.
 - [x] Mute via knob **long-press** (~600 ms) — `knob_take_long_pressed` + `set_muted`
 - [x] On-screen transport buttons (prev / play-pause / next) wired to the session;
       center play/pause icon follows player state (`ui_*transport`, `ui_set_playing`)
-- [ ] Supported-commands gating in the UI (dim next/prev when unsupported)
+- [x] Supported-commands gating in the UI (dim next/prev/play when unsupported)
+      — `ui_set_transport_enabled` fed by `supports_prev/pause/next` (`app_main` →
+      `set_btn_enabled` dims the buttons)
 
 ## M5 — Multi-device UX
 - [x] Switch active device via **swipe left/right** (LVGL gesture → `ui_take_swipe`;
@@ -80,7 +82,9 @@ Cast protocol) before polishing UX.
 - [x] `cast_status` parser tests (`test/test_status/`, 18 cases) — synthetic
       fixtures; cJSON vendored at `lib/cjson/`
 - [ ] `cast trace` (`-DCAST_TRACE`) + `just trace`; capture real fixtures on hardware
-- [ ] Swap synthetic fixtures for real captures; wire `just test` into CI
+- [x] CI: `just test` (native tests) + `just build` (compile gate) on every PR/push
+      (`.github/workflows/ci.yml`, two parallel jobs; PlatformIO toolchain cached)
+- [ ] Swap synthetic fixtures for real captures (needs hardware capture)
 
 ## Speaker selection (UX) — done
 - [x] Knob **press → device list** (opens instantly), **dial navigates**, press/tap

@@ -150,10 +150,20 @@ test_framework = unity
 | `just trace [label]` | capture serial trace → `test/fixtures/capture-<label>.log` |
 | `just fixtures` | slice a capture log into per-message fixture files |
 
-## CI (later)
+## CI ✅
 
-`just test` runs on every PR (host-only, no hardware) alongside the existing
-`just build` compile gate — see [05-build-and-tooling.md](05-build-and-tooling.md).
+`.github/workflows/ci.yml` runs on every push to `main`, every PR, and on
+manual dispatch. Two parallel jobs, both host-only (no hardware), each mirroring
+a `just` recipe inside the uv venv:
+
+- **Native unit tests** — `just setup` then `just test` (the 23 pure-parser
+  cases). Fast: compiles with the runner's gcc, no ESP-IDF download.
+- **Firmware build** — `just setup` then `just build` (the compile gate). The
+  espressif32 platform + Xtensa toolchain + ESP-IDF (~GB) are cached in
+  `~/.platformio`, keyed on `platformio.ini`/`boards/`/`sdkconfig.defaults`/
+  `idf_component.yml`, so only the first run pays the download.
+
+`concurrency` cancels an in-flight run when a newer commit lands on the same ref.
 
 ## Implementation order
 
@@ -162,7 +172,7 @@ test_framework = unity
 3. Add `cast trace` + `just trace`; capture real fixtures on hardware.
 4. ✅ Add `cast_status` parser tests (`test/test_status/`) — currently against
    hand-authored fixtures (synthetic); swap in real captures once (3) lands.
-   CI wiring still TODO.
+5. ✅ Wire `just test` + `just build` into CI (`.github/workflows/ci.yml`).
 
 > `just test` runs both suites on the host (23 cases). cJSON for the native env
 > is vendored at `lib/cjson/` (see its README).
