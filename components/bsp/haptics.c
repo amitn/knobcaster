@@ -21,7 +21,7 @@ static const char *TAG = "haptics";
 
 #define DRV_MODE_INTTRIG  0x00   // internal trigger, out of standby
 #define DRV_LIBRARY_ERM_A 0x01   // ERM waveform library A
-#define DRV_EFFECT_CLICK  0x01   // waveform 1 = "Strong Click - 100%"
+#define DRV_EFFECT_CLICK  24     // waveform 24 = "Sharp Tick 1 - 100%" (tuned on-device)
 
 static i2c_master_dev_handle_t s_dev;
 static QueueHandle_t           s_q;
