@@ -91,8 +91,9 @@ void test_media_playing_full_metadata(void)
     const char *json =
         "{\"type\":\"MEDIA_STATUS\",\"status\":[{"
         "\"playerState\":\"PLAYING\",\"mediaSessionId\":7,"
+        "\"currentTime\":42.5,"
         "\"supportedMediaCommands\":51,"
-        "\"media\":{\"metadata\":{"
+        "\"media\":{\"duration\":210.0,\"metadata\":{"
         "\"title\":\"Song A\",\"artist\":\"Artist B\","
         "\"images\":[{\"url\":\"https://i.scdn.co/image/abc\"}]}}}]}";
     cast_media_status_t m;
@@ -104,6 +105,8 @@ void test_media_playing_full_metadata(void)
     TEST_ASSERT_EQUAL_STRING("Artist B", m.subtitle);
     TEST_ASSERT_TRUE(m.has_media);
     TEST_ASSERT_EQUAL_STRING("https://i.scdn.co/image/abc", m.art_url);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 42.5, m.current_time);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 210.0, m.duration);
     // supportedMediaCommands = 51 (0x33) sets pause|seek|skipfwd|skipback bits.
     TEST_ASSERT_TRUE(m.supports_pause);
     TEST_ASSERT_TRUE(m.supports_seek);
@@ -139,6 +142,35 @@ void test_media_partial_keeps_title(void)
     TEST_ASSERT_EQUAL_INT(CAST_PLAYER_PLAYING, m.state);
     TEST_ASSERT_FALSE(m.has_media);
     TEST_ASSERT_EQUAL_STRING("Previous Song", m.title);   // preserved
+}
+
+// Live streams have currentTime but no media.duration -> duration stays 0.
+void test_media_live_has_position_no_duration(void)
+{
+    cast_media_status_t m;
+    memset(&m, 0, sizeof(m));
+    const char *json =
+        "{\"type\":\"MEDIA_STATUS\",\"status\":[{"
+        "\"playerState\":\"PLAYING\",\"currentTime\":99.0,"
+        "\"media\":{\"metadata\":{\"title\":\"Live\"}}}]}";
+    TEST_ASSERT_TRUE(PARSE(cast_parse_media_status, json, &m));
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 99.0, m.current_time);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 0.0, m.duration);   // unknown / live
+}
+
+// A position-only push (no media block) updates currentTime but keeps duration.
+void test_media_position_update_keeps_duration(void)
+{
+    cast_media_status_t m;
+    memset(&m, 0, sizeof(m));
+    m.duration = 210.0f;            // from a prior full status
+    m.current_time = 42.5f;
+    const char *json =
+        "{\"type\":\"MEDIA_STATUS\",\"status\":[{"
+        "\"playerState\":\"PLAYING\",\"currentTime\":55.0}]}";
+    TEST_ASSERT_TRUE(PARSE(cast_parse_media_status, json, &m));
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 55.0, m.current_time);   // advanced
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 210.0, m.duration);      // preserved
 }
 
 void test_media_empty_status_array_is_false(void)
@@ -244,6 +276,8 @@ int main(void)
     RUN_TEST(test_media_playing_full_metadata);
     RUN_TEST(test_media_commands_none);
     RUN_TEST(test_media_partial_keeps_title);
+    RUN_TEST(test_media_live_has_position_no_duration);
+    RUN_TEST(test_media_position_update_keeps_duration);
     RUN_TEST(test_media_empty_status_array_is_false);
     RUN_TEST(test_media_artist_falls_back_to_subtitle);
     RUN_TEST(test_multizone_members);

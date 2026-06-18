@@ -39,6 +39,11 @@ swiping cycles through.
 - **Any-script titles** — titles render via LVGL Tiny-TTF with an embedded
   DejaVu subset (Latin + Hebrew) and bidi, so RTL/non-Latin titles display
   correctly instead of tofu boxes.
+- **Track-position bar** — a thin progress bar under the title reflects
+  `currentTime`/`duration` from the media status. Cast only pushes `currentTime`
+  occasionally, so the position is anchored to a local timestamp and interpolated
+  while playing (`render_session`); hidden for live streams (no duration) and when
+  idle. Parser (`cast_status`) is host-unit-tested.
 - **Haptic detents** — a DRV2605 click fires on each detent (the encoder is
   mechanically smooth).
 - **Screen sleep** — after 5 min idle the backlight + panel turn off; any input

@@ -24,6 +24,7 @@ static lv_obj_t *s_device_lbl;
 static lv_obj_t *s_title_lbl;
 static lv_obj_t *s_subtitle_lbl;
 static lv_obj_t *s_vol_arc;
+static lv_obj_t *s_progress;   // thin now-playing position bar (hidden when no duration)
 static lv_obj_t *s_hint_lbl;
 static lv_obj_t *s_wifi_lbl;   // Wi-Fi status icon (top)
 static lv_obj_t *s_prev_btn, *s_play_btn, *s_next_btn;
@@ -165,6 +166,18 @@ void ui_init(void)
     lv_label_set_text(s_subtitle_lbl, "");
     lv_obj_align(s_subtitle_lbl, LV_ALIGN_CENTER, 0, 28);
 
+    // Thin track-position bar between the subtitle and the transport buttons.
+    // Hidden until a track with a known duration is playing (see ui_set_progress).
+    s_progress = lv_bar_create(scr);
+    lv_obj_set_size(s_progress, 170, 4);
+    lv_obj_align(s_progress, LV_ALIGN_CENTER, 0, 58);
+    lv_bar_set_range(s_progress, 0, 1000);
+    lv_bar_set_value(s_progress, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(s_progress, lv_color_hex(0x303030), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_progress, lv_color_hex(0xCCCCCC), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(s_progress, 2, LV_PART_MAIN);
+    lv_obj_add_flag(s_progress, LV_OBJ_FLAG_HIDDEN);
+
     // Transport buttons (prev / play-pause / next).
     s_prev_btn = make_transport_btn(scr, LV_SYMBOL_PREV, -72, UI_TRANSPORT_PREV);
     s_play_btn = make_transport_btn(scr, LV_SYMBOL_PLAY, 0, UI_TRANSPORT_PLAYPAUSE);
@@ -188,6 +201,19 @@ void ui_set_now_playing(const char *device, const char *title,
     if (title)    lv_label_set_text(s_title_lbl, title);
     if (subtitle) lv_label_set_text(s_subtitle_lbl, subtitle);
     if (volume_pct >= 0) lv_arc_set_value(s_vol_arc, volume_pct);
+    lvgl_port_unlock();
+}
+
+void ui_set_progress(float frac)
+{
+    lvgl_port_lock(0);
+    if (frac < 0.0f) {
+        lv_obj_add_flag(s_progress, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        if (frac > 1.0f) frac = 1.0f;
+        lv_obj_clear_flag(s_progress, LV_OBJ_FLAG_HIDDEN);
+        lv_bar_set_value(s_progress, (int)(frac * 1000.0f + 0.5f), LV_ANIM_OFF);
+    }
     lvgl_port_unlock();
 }
 

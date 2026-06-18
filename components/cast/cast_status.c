@@ -120,9 +120,19 @@ bool cast_parse_media_status(const char *json, size_t len, cast_media_status_t *
         inout->supports_prev  = b & (0x80 | 0x20); // QUEUE_PREV | SKIP_BACK
     }
 
+    // Playback position (seconds, may be fractional). Lives on the status object;
+    // present on most pushes. Kept across partial updates that omit it.
+    cJSON *ct = cJSON_GetObjectItemCaseSensitive(st, "currentTime");
+    if (cJSON_IsNumber(ct)) inout->current_time = (float)ct->valuedouble;
+
     cJSON *media = cJSON_GetObjectItemCaseSensitive(st, "media");
     cJSON *meta  = media ? cJSON_GetObjectItemCaseSensitive(media, "metadata") : NULL;
     inout->has_media = (meta != NULL);
+
+    // Total track length lives on media.duration (absent for live streams).
+    cJSON *dur = media ? cJSON_GetObjectItemCaseSensitive(media, "duration") : NULL;
+    if (cJSON_IsNumber(dur)) inout->duration = (float)dur->valuedouble;
+
     if (meta) {
         copy_str_field(meta, "title", inout->title, sizeof(inout->title));
         const char *artist = str_field(meta, "artist");   // prefer artist, else subtitle

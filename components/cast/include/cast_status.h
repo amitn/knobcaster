@@ -36,6 +36,8 @@ typedef struct {
     bool has_media;         // this status carried a media/metadata block
     char art_url[512];      // album-art image URL (metadata.images[0].url), "" if none
                             // (Google/YouTube-Music signed thumbnail URLs get long)
+    float current_time;     // playback position in seconds at this status (0 if absent)
+    float duration;         // total media length in seconds (0 = unknown / live stream)
 } cast_media_status_t;
 
 typedef struct {

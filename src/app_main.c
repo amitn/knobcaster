@@ -211,6 +211,29 @@ static void render_session(warm_t *e, bool active)
     ui_set_transport_enabled(m.supports_prev, m.supports_pause, m.supports_next);
     ui_set_wifi(true);
 
+    // Track-position bar. Cast only pushes currentTime occasionally, so anchor the
+    // reported position to a local timestamp and interpolate while playing; hide
+    // it when there's no duration (live stream) or nothing is playing.
+    static int     prog_msid   = -1;
+    static float   prog_raw    = -1.0f;   // last currentTime sample we anchored on
+    static float   prog_anchor = 0.0f;
+    static int64_t prog_us     = 0;
+    int64_t now_us = esp_timer_get_time();
+    if (m.media_session_id != prog_msid || m.current_time != prog_raw) {
+        prog_msid = m.media_session_id;
+        prog_raw = prog_anchor = m.current_time;
+        prog_us = now_us;
+    }
+    float frac = -1.0f;
+    if (m.duration > 1.0f && m.state != CAST_PLAYER_IDLE) {
+        float pos = prog_anchor;
+        if (m.state == CAST_PLAYER_PLAYING) pos += (now_us - prog_us) / 1000000.0f;
+        if (pos < 0) pos = 0;
+        if (pos > m.duration) pos = m.duration;
+        frac = pos / m.duration;
+    }
+    ui_set_progress(frac);
+
     // Album art: fetch only when the URL changes; clear when idle / no art.
     if (m.state == CAST_PLAYER_IDLE || !m.art_url[0]) {
         if (g_shown_art[0]) { albumart_clear(); g_shown_art[0] = '\0'; }

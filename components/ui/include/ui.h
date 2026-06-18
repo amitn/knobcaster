@@ -43,6 +43,10 @@ void ui_prov_hide(void);
 // Reflect play state on the center transport button (play vs pause icon).
 void ui_set_playing(bool playing);
 
+// Set the now-playing position bar to a 0..1 fraction; pass <0 to hide it
+// (no duration / live stream / idle).
+void ui_set_progress(float frac);
+
 // Reflect the dial mode: false = Volume (dial sets volume), true = Speakers
 // (dial picks the active speaker). Updates the hint + highlights the device name.
 void ui_set_dial_mode(bool speakers_mode);
