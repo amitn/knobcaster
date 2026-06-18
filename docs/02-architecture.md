@@ -99,23 +99,22 @@ knob/touch ──intent──▶ ui_task ──CastCommand──▶ [queue] ─�
                           └────────AppState snapshot────────────┘
 ```
 
-The encoder (in `bsp/knob.c`) is **interrupt-driven**: PCNT **watch-points** at
--1/0/+1 (`pcnt_unit_add_watch_point` + `pcnt_unit_register_event_callbacks`) fire
-the `enc_on_reach` ISR callback only on a real counter change. The anti-glitch
-state machine (one detent per departure from 0, re-arm at 0) lives in the
-callback, which stays minimal — bump `s_enc_accum`, kick haptics via its
-ISR-safe `haptics_click_from_isr()`. No poll task, so the encoder consumes zero
-idle CPU. `ui_task` drains detents via `knob_take_delta()`.
+A small task, **`enc_task`** (in `bsp/knob.c`, prio 3), **polls** the PCNT
+counter every ~4 ms to decode detents (one per departure from 0, re-armed at 0 —
+anti-glitch). It feeds `ui_task` via `knob_take_delta()`.
 
-> ⚠️ Historical (the bug that motivated the rewrite): the original `enc_task`
-> **polled** the PCNT counter every ~4 ms. A polling task **must** sleep a
-> non-zero number of ticks — at `FREERTOS_HZ=100`, `pdMS_TO_TICKS(4)` truncated
-> to 0 and `vTaskDelay(0)` only yields, so `enc_task` busy-spun on core 0,
-> tripped the task watchdog, and starved `net_task` (Wi-Fi/TLS crawled). That was
-> patched (tick → 1 kHz, delay clamped ≥ 1 tick); the watch-point ISR now removes
-> the poll loop entirely. General rule: a poll-loop task must sleep ≥ 1 tick and
-> sit *below* the work it feeds in priority so a regression can't starve
-> networking.
+> ⚠️ Two hard-won lessons here:
+> 1. A polling task **must** sleep a non-zero number of ticks. At
+>    `FREERTOS_HZ=100`, `pdMS_TO_TICKS(4)` truncated to 0 and `vTaskDelay(0)` only
+>    yields, so `enc_task` busy-spun on core 0, tripped the task watchdog, and
+>    starved `net_task` (Wi-Fi/TLS crawled). Fixed by raising the tick to 1 kHz
+>    and clamping the delay to ≥ 1 tick.
+> 2. An **interrupt-driven** version (PCNT watch-points, zero idle CPU) was tried
+>    and reverted: edge-triggered, it caught the intra-detent contact bounce the
+>    4 ms poll naturally filters, so one direction's `+1` was cancelled by a
+>    spurious `-1` ("volume only goes down"). The poll's periodic sampling is what
+>    makes the anti-glitch logic robust — keep it. A future ISR version would need
+>    an explicit time-based debounce.
 
 ## Wi-Fi provisioning (SoftAP + QR + web form)
 

@@ -51,9 +51,10 @@ Tasks, all cooperating through a command queue + mutex-guarded shared state in
   check would delay the first scan ~30s).
 - **`ui_input_task`** (prio 5): reads knob/touch, sends commands, optimistic
   volume arc. Never blocks on the network.
-- **encoder** (`components/bsp/knob.c`): interrupt-driven — PCNT watch-points at
-  -1/0/+1 fire the `enc_on_reach` ISR (no poll task). Detents decoded on
-  departure-from-0; haptics kicked via the ISR-safe `haptics_click_from_isr()`.
+- **`enc_task`** (`components/bsp/knob.c`, prio 3): polls the PCNT encoder every
+  ~4 ms, decoding one detent per departure-from-0 (re-armed at 0, anti-glitch).
+  An interrupt/watch-point version was tried and reverted — it caught contact
+  bounce the poll filters, so volume only went down. Keep the poll.
 - **`albumart` task** (`components/albumart/`, prio 2, core 1): async HTTPS
   fetch + JPEG decode of cover art, off the UI/net threads. **Invariant: art
   fetch/decode must never block the UI or net task.**
@@ -69,10 +70,14 @@ Components: `cast/` (discovery, connection, session, pure `cast_status` parsers)
 
 - **FreeRTOS tick is 1 kHz** (`CONFIG_FREERTOS_HZ=1000`). A polling task must
   `vTaskDelay` ≥ 1 tick — at the old 100 Hz, `pdMS_TO_TICKS(4)` truncated to 0
-  and the (then poll-based) encoder task busy-spun, starving everything (this was
-  the "slow connect" bug). The encoder is now interrupt-driven so it no longer
-  polls, but the rule stands for any poll-loop task: sleep ≥ 1 tick and sit below
-  the work it feeds in priority.
+  and the encoder poll task busy-spun, starving everything (this was the "slow
+  connect" bug). Rule for any poll-loop task: sleep ≥ 1 tick and sit below the
+  work it feeds in priority.
+- **Encoder stays a poll, not an ISR.** A PCNT watch-point (interrupt) version
+  was tried and reverted: edge-triggered, it caught intra-detent contact bounce
+  the 4 ms poll filters, so one direction cancelled out ("volume only goes
+  down"). The poll's sampling *is* the anti-glitch. An ISR version would need an
+  explicit time-based debounce.
 - **TLS config** (`sdkconfig.defaults`): esp-tls is built in **insecure mode**
   (Cast devices are self-signed) — connect without cert verification, don't
   attach a cert bundle. mbedTLS uses `MBEDTLS_DEFAULT_MEM_ALLOC` so big SSL
