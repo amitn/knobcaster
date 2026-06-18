@@ -43,9 +43,20 @@ Two distinct serial devices appear, one per MCU — **flash the S3, never the CH
 
 Selecting the CH340 in a flasher (e.g. ESP Web Tools) talks to the secondary
 ESP32 (a plain ESP32 running Bluetooth A2DP), which fails as "board not
-supported" and shows a BT/`A2DP`/`AVRC` boot log. The S3's native USB may need a
-specific USB-C port / a USB-select switch on the board, or BOOT+RESET to force
-download mode, before it enumerates.
+supported" and shows a BT/`A2DP`/`AVRC` boot log.
+
+**There is ONE Type-C port, routed through an on-board toggle switch** (a
+four-pole double-throw analog switch — "Bidirectional Switchable for
+ESP32-S3/ESP32" per the Waveshare wiki). It connects USB to **either** MCU:
+
+- Switch on the **ESP32-S3** side → "USB JTAG/serial debug unit" (`303a:1001`)
+  enumerates → flash here.
+- Switch on the **ESP32** side → only the CH340 (`1a86:7523`, secondary BT chip)
+  shows.
+
+So if a flasher only sees the CH340, **flip the switch to the S3 side**. To enter
+the S3 bootloader: hold the **BOOT** button and power on again (or RESET >1 s).
+The wiki's flow is: toggle to S3 → flash → toggle back to run.
 
 ## Display — SH8601 (QSPI)
 
