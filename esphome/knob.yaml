@@ -1,0 +1,136 @@
+# ESPHome config for the Waveshare ESP32-S3-Knob-Touch-LCD-1.8.
+#
+# STATUS: Phase-1 hardware scaffold (branch esphome-port). This brings up the
+# board's peripherals under ESPHome; the Google Cast control + custom UI are
+# later phases (see docs/08-esphome-port.md). Pins are from components/bsp/
+# include/board_pins.h. NOT yet validated on hardware — treat as a starting point.
+#
+# Build:  esphome run esphome/knob.yaml   (or via the ESPHome dashboard)
+
+esphome:
+  name: cast-knob
+  friendly_name: Cast Knob
+
+esp32:
+  board: esp32-s3-devkitc-1   # custom 16MB flash / 8MB OPI PSRAM (see flash_size)
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal        # ESP32-S3R8 OPI PSRAM (matches CONFIG_SPIRAM_MODE_OCT)
+  speed: 80MHz
+
+logger:
+  # Native USB-Serial/JTAG console, like the IDF build.
+  hardware_uart: USB_SERIAL_JTAG
+
+# --- Connectivity ------------------------------------------------------------
+wifi:
+  # No creds compiled in: fall back to an AP + captive portal (mirrors our
+  # provisioning component). HA/ESPHome can also push creds.
+  ap:
+    ssid: "CastKnob-Setup"
+
+captive_portal:
+
+# BLE/serial provisioning (nicer than our QR portal; optional).
+improv_serial:
+
+# ESPHome/HA-dashboard OTA (replaces components/ota for this build).
+ota:
+  - platform: esphome
+
+# --- Buses -------------------------------------------------------------------
+i2c:
+  sda: 11
+  scl: 12
+  frequency: 400kHz
+
+spi:
+  - id: qspi_bus
+    type: quad           # SH8601 is a 4-data-line QSPI AMOLED
+    clk_pin: 13
+    data_pins: [15, 16, 17, 18]   # DATA0..DATA3
+
+# --- Display (SH8601 QSPI, 360x360 AMOLED) -----------------------------------
+# RISKIEST item. SH8601 isn't a built-in qspi_dbi model, so the full init
+# sequence must be ported from components/bsp/display.c (~190 commands). The
+# stub below is a placeholder — the real sequence is required before this draws.
+display:
+  - platform: qspi_dbi
+    id: knob_lcd
+    model: CUSTOM
+    cs_pin: 14
+    reset_pin: 21
+    dimensions:
+      width: 360
+      height: 360
+    color_order: rgb
+    # TODO(phase1): port the SH8601 init_sequence from bsp/display.c lcd_init_cmds[].
+    init_sequence:
+      - [0xF0, 0x28]
+      - [0xF2, 0x28]
+      # ... (~190 more) ...
+    auto_clear_enabled: false
+    update_interval: never   # LVGL drives the flush
+
+# Backlight (GPIO47, active-high). LEDC so we can dim before sleep.
+output:
+  - platform: ledc
+    pin: 47
+    id: backlight_pwm
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    id: backlight
+    restore_mode: ALWAYS_ON
+
+# --- Touch (CST816) ----------------------------------------------------------
+touchscreen:
+  - platform: cst816
+    id: knob_touch
+    interrupt_pin: 9
+    reset_pin: 10
+    # address 0x15 is the cst816 default
+
+# --- Rotary encoder + button -------------------------------------------------
+sensor:
+  - platform: rotary_encoder
+    name: "Knob"
+    id: knob_encoder
+    pin_a: 8
+    pin_b: 7
+    # NB: this board pulses +/-1 per detent and returns to 0; the anti-glitch
+    # decode in bsp/knob.c may need replicating via on_clockwise/on_anticlockwise
+    # filters. Validate detent counting on hardware.
+
+binary_sensor:
+  - platform: gpio
+    name: "Knob button"
+    id: knob_button
+    pin:
+      number: 0          # BOOT/strapping, active-low
+      mode: INPUT_PULLUP
+      inverted: true
+
+# --- UI (LVGL) ---------------------------------------------------------------
+# Phase-2: now-playing screen (device name, title/artist, volume arc, transport,
+# progress bar). Minimal placeholder for now.
+lvgl:
+  displays:
+    - knob_lcd
+  touchscreens:
+    - knob_touch
+  pages:
+    - id: now_playing
+      widgets:
+        - label:
+            align: CENTER
+            text: "Cast Knob (ESPHome)"
+
+# === TODO: later phases (see docs/08-esphome-port.md) ========================
+# external_components:
+#   - source: components/esphome/cast_controller   # port of components/cast/
+#   - source: components/esphome/drv2605           # haptics
+# online_image:  # album art (HTTP fetch + JPEG decode)
