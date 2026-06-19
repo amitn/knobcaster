@@ -66,7 +66,13 @@ void CastController::task_main() {
 
     if (n > 0 && !sess) {
       sess = cast_session_open(&scan[0]);
-      if (sess) ESP_LOGI(TAG, "session open: %s", scan[0].friendly_name);
+      if (sess) {
+        ESP_LOGI(TAG, "session open: %s", scan[0].friendly_name);
+        xSemaphoreTake(lock_, portMAX_DELAY);
+        std::strncpy(snap_device_, scan[0].friendly_name, sizeof(snap_device_) - 1);
+        snap_device_[sizeof(snap_device_) - 1] = '\0';
+        xSemaphoreGive(lock_);
+      }
     }
 
     // Service the session for a while: drain commands, poll, publish snapshots.
@@ -112,13 +118,15 @@ void CastController::request_transport(int kind) {
 void CastController::loop() {
   // Snapshot under lock, then publish (publish_state must run on this thread).
   int count, volume;
-  char now[sizeof(snap_now_)];
+  char now[sizeof(snap_now_)], device[sizeof(snap_device_)];
   xSemaphoreTake(lock_, portMAX_DELAY);
   count = snap_count_;
   volume = snap_volume_;
   std::strncpy(now, snap_now_, sizeof(now));
+  std::strncpy(device, snap_device_, sizeof(device));
   xSemaphoreGive(lock_);
   now[sizeof(now) - 1] = '\0';
+  device[sizeof(device) - 1] = '\0';
 
   if (devices_found_ && count != pub_count_) {
     pub_count_ = count;
@@ -132,6 +140,10 @@ void CastController::loop() {
     std::strncpy(pub_now_, now, sizeof(pub_now_));
     now_playing_->publish_state(now);
   }
+  if (current_device_ && std::strcmp(device, pub_device_) != 0) {
+    std::strncpy(pub_device_, device, sizeof(pub_device_));
+    current_device_->publish_state(device);
+  }
 }
 
 void CastController::dump_config() {
@@ -139,6 +151,7 @@ void CastController::dump_config() {
   LOG_SENSOR("  ", "Devices found", devices_found_);
   LOG_SENSOR("  ", "Volume", volume_);
   LOG_TEXT_SENSOR("  ", "Now playing", now_playing_);
+  LOG_TEXT_SENSOR("  ", "Current device", current_device_);
 }
 
 float CastController::get_setup_priority() const { return setup_priority::AFTER_WIFI; }

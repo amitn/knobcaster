@@ -20,6 +20,7 @@ CastController = cast_ns.class_("CastController", cg.Component)
 
 CONF_DEVICES_FOUND = "devices_found"
 CONF_NOW_PLAYING = "now_playing"
+CONF_CURRENT_DEVICE = "current_device"
 CONF_VOLUME = "volume"
 
 CONFIG_SCHEMA = cv.Schema(
@@ -27,6 +28,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.GenerateID(): cv.declare_id(CastController),
         cv.Optional(CONF_DEVICES_FOUND): sensor.sensor_schema(accuracy_decimals=0),
         cv.Optional(CONF_NOW_PLAYING): text_sensor.text_sensor_schema(),
+        cv.Optional(CONF_CURRENT_DEVICE): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_VOLUME): sensor.sensor_schema(
             unit_of_measurement="%", accuracy_decimals=0
         ),
@@ -55,3 +57,6 @@ async def to_code(config):
     if CONF_NOW_PLAYING in config:
         ts = await text_sensor.new_text_sensor(config[CONF_NOW_PLAYING])
         cg.add(var.set_now_playing_sensor(ts))
+    if CONF_CURRENT_DEVICE in config:
+        ts = await text_sensor.new_text_sensor(config[CONF_CURRENT_DEVICE])
+        cg.add(var.set_current_device_sensor(ts))

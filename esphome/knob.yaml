@@ -38,8 +38,22 @@ cast_controller:
     name: "Cast devices found"
   now_playing:
     name: "Now playing"
+    on_value:
+      - lvgl.label.update:
+          id: ui_title
+          text: !lambda "return x.c_str();"
+  current_device:
+    name: "Current device"
+    on_value:
+      - lvgl.label.update:
+          id: ui_device
+          text: !lambda "return x.c_str();"
   volume:
     name: "Cast volume"
+    on_value:
+      - lvgl.arc.update:
+          id: ui_vol_arc
+          value: !lambda "return (int) x;"
 
 # HA-controllable entities -> cast_controller command queue (template platforms,
 # so no custom number/button platform code is needed).
@@ -170,10 +184,69 @@ lvgl:
     - knob_touch
   pages:
     - id: now_playing
+      bg_color: 0x000000
       widgets:
-        - label:
+        # Volume ring (updated from the cast volume sensor).
+        - arc:
+            id: ui_vol_arc
             align: CENTER
-            text: "Cast Knob (ESPHome)"
+            width: 340
+            height: 340
+            min_value: 0
+            max_value: 100
+            value: 0
+            adjustable: false
+            arc_color: 0x0A84FF
+            indicator:
+              arc_color: 0x0A84FF
+        # Active speaker (top).
+        - label:
+            id: ui_device
+            align: TOP_MID
+            y: 64
+            text: "Cast Knob"
+            text_color: 0xFFFFFF
+        # Now playing "title - artist" (center).
+        - label:
+            id: ui_title
+            align: CENTER
+            y: -8
+            text: "ready"
+            text_color: 0xFFFFFF
+            text_align: CENTER
+            long_mode: dot
+            width: 240
+        # Transport buttons -> cast_controller command queue.
+        - button:
+            align: BOTTOM_MID
+            x: -72
+            y: -36
+            width: 52
+            height: 52
+            widgets:
+              - label: { align: CENTER, text: "<<" }
+            on_press:
+              - lambda: "id(cast).request_transport(4);"   # CMD_PREV
+        - button:
+            align: BOTTOM_MID
+            x: 0
+            y: -36
+            width: 52
+            height: 52
+            widgets:
+              - label: { align: CENTER, text: "|>" }
+            on_press:
+              - lambda: "id(cast).request_transport(2);"   # CMD_PLAYPAUSE
+        - button:
+            align: BOTTOM_MID
+            x: 72
+            y: -36
+            width: 52
+            height: 52
+            widgets:
+              - label: { align: CENTER, text: ">>" }
+            on_press:
+              - lambda: "id(cast).request_transport(3);"   # CMD_NEXT
 
 # === TODO: later phases (see docs/08-esphome-port.md) ========================
 # external_components:

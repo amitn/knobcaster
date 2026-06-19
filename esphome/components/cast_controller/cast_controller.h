@@ -28,6 +28,7 @@ class CastController : public Component {
 
   void set_devices_found_sensor(sensor::Sensor *s) { devices_found_ = s; }
   void set_now_playing_sensor(text_sensor::TextSensor *s) { now_playing_ = s; }
+  void set_current_device_sensor(text_sensor::TextSensor *s) { current_device_ = s; }
   void set_volume_sensor(sensor::Sensor *s) { volume_ = s; }
 
   // Control entry points (call from ESPHome lambdas/main loop). They enqueue a
@@ -42,6 +43,7 @@ class CastController : public Component {
 
   sensor::Sensor *devices_found_{nullptr};
   text_sensor::TextSensor *now_playing_{nullptr};
+  text_sensor::TextSensor *current_device_{nullptr};
   sensor::Sensor *volume_{nullptr};
 
   QueueHandle_t cmd_q_{nullptr};   // HA/UI commands -> session task
@@ -51,11 +53,13 @@ class CastController : public Component {
   int snap_count_{-1};
   int snap_volume_{-1};
   char snap_now_[160]{0};
+  char snap_device_[64]{0};
 
   // Last value published to each entity (de-dupe).
   int pub_count_{-2};
   int pub_volume_{-2};
   char pub_now_[160]{0};
+  char pub_device_[64]{0};
 };
 
 }  // namespace cast_controller
