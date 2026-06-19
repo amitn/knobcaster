@@ -71,15 +71,15 @@ button:
   - platform: template
     name: "Play Pause"
     on_press:
-      - lambda: "id(cast).request_transport(2 /*CMD_PLAYPAUSE*/);"
+      - lambda: "id(cast).request_play_pause();"
   - platform: template
     name: "Next track"
     on_press:
-      - lambda: "id(cast).request_transport(3 /*CMD_NEXT*/);"
+      - lambda: "id(cast).request_next();"
   - platform: template
     name: "Previous track"
     on_press:
-      - lambda: "id(cast).request_transport(4 /*CMD_PREV*/);"
+      - lambda: "id(cast).request_prev();"
   - platform: template
     name: "Mute toggle"
     on_press:
@@ -127,7 +127,6 @@ display:
       width: 360
       height: 360
     color_order: rgb
-    # TODO(phase1): port the SH8601 init_sequence from bsp/display.c lcd_init_cmds[].
     init_sequence:
       # Generated from components/bsp/display.c by scripts/gen_esphome_init.py.
       # Edit the init there (single source of truth), then re-run that script.
@@ -346,9 +345,13 @@ sensor:
     id: knob_encoder
     pin_a: 8
     pin_b: 7
-    # NB: this board pulses +/-1 per detent and returns to 0; the anti-glitch
-    # decode in bsp/knob.c may need replicating via on_clockwise/on_anticlockwise
-    # filters. Validate detent counting on hardware.
+    # Knob -> relative volume on the active speaker. NB: this board pulses +/-1
+    # per detent and returns to 0; detent counting needs on-hardware validation
+    # (the IDF build has anti-glitch decode in bsp/knob.c).
+    on_clockwise:
+      - lambda: "id(cast).request_step_volume(+3);"
+    on_anticlockwise:
+      - lambda: "id(cast).request_step_volume(-3);"
 
 binary_sensor:
   - platform: gpio
@@ -411,7 +414,7 @@ lvgl:
             widgets:
               - label: { align: CENTER, text: "<<" }
             on_press:
-              - lambda: "id(cast).request_transport(4);"   # CMD_PREV
+              - lambda: "id(cast).request_prev();"   # CMD_PREV
         - button:
             align: BOTTOM_MID
             x: 0
@@ -421,7 +424,7 @@ lvgl:
             widgets:
               - label: { align: CENTER, text: "|>" }
             on_press:
-              - lambda: "id(cast).request_transport(2);"   # CMD_PLAYPAUSE
+              - lambda: "id(cast).request_play_pause();"   # CMD_PLAYPAUSE
         - button:
             align: BOTTOM_MID
             x: 72
@@ -431,7 +434,7 @@ lvgl:
             widgets:
               - label: { align: CENTER, text: ">>" }
             on_press:
-              - lambda: "id(cast).request_transport(3);"   # CMD_NEXT
+              - lambda: "id(cast).request_next();"   # CMD_NEXT
 
 # === TODO: later phases (see docs/08-esphome-port.md) ========================
 # external_components:

@@ -40,6 +40,7 @@ static void apply_cmd(cast_session_t *sess, const CastCmd &c) {
   if (!sess) return;
   switch (c.kind) {
     case CMD_VOLUME: cast_session_set_volume(sess, c.arg); break;
+    case CMD_VOLUME_STEP: cast_session_step_volume(sess, c.arg); break;
     case CMD_MUTE: {
       cast_volume_status_t v;
       cast_session_get_volume(sess, &v);
@@ -99,21 +100,17 @@ void CastController::task_main() {
   }
 }
 
-void CastController::request_set_volume(float pct) {
+void CastController::enqueue(uint8_t kind, float arg) {
   if (!cmd_q_) return;
-  CastCmd c{CMD_VOLUME, pct / 100.0f};
+  CastCmd c{kind, arg};
   xQueueSend(cmd_q_, &c, 0);
 }
-void CastController::request_mute() {
-  if (!cmd_q_) return;
-  CastCmd c{CMD_MUTE, 0};
-  xQueueSend(cmd_q_, &c, 0);
-}
-void CastController::request_transport(int kind) {
-  if (!cmd_q_) return;
-  CastCmd c{(uint8_t) kind, 0};
-  xQueueSend(cmd_q_, &c, 0);
-}
+void CastController::request_set_volume(float pct) { enqueue(CMD_VOLUME, pct / 100.0f); }
+void CastController::request_step_volume(float pct) { enqueue(CMD_VOLUME_STEP, pct / 100.0f); }
+void CastController::request_mute() { enqueue(CMD_MUTE, 0); }
+void CastController::request_play_pause() { enqueue(CMD_PLAYPAUSE, 0); }
+void CastController::request_next() { enqueue(CMD_NEXT, 0); }
+void CastController::request_prev() { enqueue(CMD_PREV, 0); }
 
 void CastController::loop() {
   // Snapshot under lock, then publish (publish_state must run on this thread).

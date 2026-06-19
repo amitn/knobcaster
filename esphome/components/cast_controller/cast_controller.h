@@ -12,7 +12,14 @@ namespace esphome {
 namespace cast_controller {
 
 // Transport command kinds (HA/UI -> session task, via cmd_q_).
-enum CastCmdKind : uint8_t { CMD_VOLUME = 0, CMD_MUTE, CMD_PLAYPAUSE, CMD_NEXT, CMD_PREV };
+enum CastCmdKind : uint8_t {
+  CMD_VOLUME = 0,  // absolute, arg = 0..1
+  CMD_VOLUME_STEP, // relative, arg = delta (-1..1)
+  CMD_MUTE,
+  CMD_PLAYPAUSE,
+  CMD_NEXT,
+  CMD_PREV,
+};
 
 // ESPHome wrapper over the shared components/cast/ stack. Discovery + Cast
 // sessions run on a background FreeRTOS task (like the IDF app's net loop) so
@@ -33,13 +40,17 @@ class CastController : public Component {
 
   // Control entry points (call from ESPHome lambdas/main loop). They enqueue a
   // command for the session task to apply — the session is single-threaded.
-  void request_set_volume(float pct);   // 0..100
+  void request_set_volume(float pct);     // absolute, 0..100
+  void request_step_volume(float pct);    // relative, e.g. +3 / -3 (knob detent)
   void request_mute();
-  void request_transport(int kind);     // CMD_PLAYPAUSE / CMD_NEXT / CMD_PREV
+  void request_play_pause();
+  void request_next();
+  void request_prev();
 
  protected:
   static void task_trampoline(void *arg);
   void task_main();
+  void enqueue(uint8_t kind, float arg);
 
   sensor::Sensor *devices_found_{nullptr};
   text_sensor::TextSensor *now_playing_{nullptr};
