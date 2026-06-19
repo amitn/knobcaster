@@ -76,6 +76,13 @@ class CastController : public Component {
   void set_list_mode(bool on) { list_mode_ = on; list_scroll_ = 0; }
   int take_list_scroll() { int s = list_scroll_; list_scroll_ = 0; return s; }
 
+  // Screen-sleep helpers. The encoder lives outside LVGL, so the YAML resets
+  // LVGL's inactivity (and wakes) when the knob moves; while asleep the detent is
+  // swallowed so waking by turning doesn't also change volume.
+  void set_asleep(bool s) { asleep_ = s; }
+  bool is_asleep() { return asleep_; }
+  bool take_encoder_activity() { bool a = enc_activity_; enc_activity_ = false; return a; }
+
  protected:
   static void task_trampoline(void *arg);
   void task_main();
@@ -101,6 +108,8 @@ class CastController : public Component {
   drv2605::DRV2605 *haptics_{nullptr};
   bool list_mode_{false};   // encoder scrolls the speaker list instead of volume
   int list_scroll_{0};      // buffered detents while in list mode
+  bool asleep_{false};      // screen is in sleep (panel + backlight off)
+  bool enc_activity_{false};// an encoder detent occurred since last poll (for wake)
 
   // Shared snapshot: task writes under lock_, loop() reads.
   SemaphoreHandle_t lock_{nullptr};

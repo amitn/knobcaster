@@ -24,6 +24,12 @@ class SH8601 : public display::Display {
   // scripts/esphome_shot.py. Also callable from automations.
   void dump_screen();
 
+  // Turn the AMOLED panel on/off (for screen-sleep). The backlight is a separate
+  // ESPHome light; this blanks the panel itself so no stale frame shows.
+  void set_panel_sleep(bool sleeping) {
+    if (panel_ != nullptr) esp_lcd_panel_disp_on_off(panel_, !sleeping);
+  }
+
   void draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr,
                       display::ColorOrder order, display::ColorBitness bitness, bool big_endian,
                       int x_offset, int y_offset, int x_pad) override;

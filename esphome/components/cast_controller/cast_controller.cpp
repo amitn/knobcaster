@@ -10,6 +10,8 @@
 
 #include <cstring>
 #include <cstdio>
+#include <strings.h>   // strcasecmp
+#include <algorithm>   // std::sort
 
 #include "board_pins.h"  // BOARD_PIN_ENC_A/_B/_BTN (components/bsp/include)
 
@@ -115,6 +117,8 @@ void CastController::knob_poll() {
   int d = s_enc_accum;
   s_enc_accum = 0;
   if (d == 0) return;
+  enc_activity_ = true;                   // for screen-sleep wake / idle reset
+  if (asleep_) return;                    // swallow the waking turn (no volume change)
   if (haptics_) haptics_->play();         // click on every detent
   if (list_mode_)
     list_scroll_ += d;                    // list page: buffer for the roller
@@ -162,13 +166,28 @@ void CastController::task_main() {
   for (;;) {
     // Periodic discovery; keep the selection valid as the list changes.
     n = cast_discovery_scan(scan, CAST_MAX_DEVICES, 3000);
+    // Sort alphabetically (case-insensitive). Remember the active device by name
+    // first and restore sel_index_ to its new position, so the open session keeps
+    // pointing at the same speaker across re-sorts.
+    char active_name[CAST_NAME_LEN] = {0};
+    if (sess && sel_index_ < n)
+      strlcpy(active_name, scan[sel_index_].friendly_name, sizeof(active_name));
+    std::sort(scan, scan + n, [](const cast_device_t &a, const cast_device_t &b) {
+      return strcasecmp(a.friendly_name, b.friendly_name) < 0;
+    });
+    if (active_name[0]) {
+      for (int i = 0; i < n; i++)
+        if (strcmp(scan[i].friendly_name, active_name) == 0) { sel_index_ = i; break; }
+    }
     if (sel_index_ >= n) sel_index_ = 0;
     xSemaphoreTake(lock_, portMAX_DELAY);
     snap_count_ = n;
-    // Newline-joined name list for the speaker-list roller.
+    // Newline-joined name list for the speaker-list roller, each prefixed with an
+    // icon: U+2630 (group) or U+266A (single speaker).
     snap_list_[0] = '\0';
     for (int i = 0; i < n; i++) {
       if (i) strlcat(snap_list_, "\n", sizeof(snap_list_));
+      strlcat(snap_list_, scan[i].is_group ? "☰ " : "♪ ", sizeof(snap_list_));
       strlcat(snap_list_, scan[i].friendly_name, sizeof(snap_list_));
     }
     xSemaphoreGive(lock_);

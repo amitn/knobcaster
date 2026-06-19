@@ -183,6 +183,14 @@ touchscreen:
     interrupt_pin: 9
     reset_pin: 10
     # address 0x15 is the cst816 default
+    # A touch while the screen is asleep just wakes it (it also reaches LVGL, so a
+    # wake-tap on a control may still act — acceptable for now).
+    on_touch:
+      - if:
+          condition:
+            lambda: "return id(cast).is_asleep();"
+          then:
+            - script.execute: screen_wake
 
 # --- Rotary encoder + button -------------------------------------------------
 # Handled inside cast_controller (PCNT encoder + GPIO0 button ISR, decoded by the
@@ -214,12 +222,36 @@ online_image:
           format: "album art fetch/decode failed"
           level: WARN
 
-# Apply buffered encoder detents to the speaker-list roller (only nonzero while
-# the list page is in list-mode; keeps LVGL out of cast_controller).
+# Screen sleep: blank the panel + backlight after idle, wake on touch or knob.
+# Order matters — sleep: backlight off then panel off (no flash of a blank frame);
+# wake: panel on then backlight on (first lit frame already shows real content).
+script:
+  - id: screen_sleep
+    then:
+      - logger.log: "screen sleep"
+      - lambda: "id(cast).set_asleep(true);"
+      - light.turn_off: backlight
+      - lambda: "id(knob_lcd)->set_panel_sleep(true);"
+  - id: screen_wake
+    then:
+      - logger.log: "screen wake"
+      - lambda: |-
+          id(knob_lcd)->set_panel_sleep(false);
+          id(cast).set_asleep(false);
+          lv_display_trigger_activity(NULL);   // reset LVGL idle so it can re-arm
+      - light.turn_on: backlight
+
+# Per-tick housekeeping for things LVGL can't see:
+#  - encoder turn counts as activity (resets LVGL idle / wakes the screen)
+#  - apply buffered encoder detents to the speaker-list roller (list-mode only)
 interval:
   - interval: 80ms
     then:
       - lambda: |-
+          if (id(cast).take_encoder_activity()) {
+            if (id(cast).is_asleep()) id(screen_wake)->execute();
+            else lv_display_trigger_activity(NULL);
+          }
           int d = id(cast).take_list_scroll();
           if (d != 0) {
             lv_obj_t *r = id(spk_roller)->obj;
@@ -247,6 +279,9 @@ font:
     glyphsets:
       - GF_Latin_Core
     glyphs:
+      # Speaker-list icons: ☰ = Cast group, ♪ = single speaker.
+      - "☰"
+      - "♪"
       - "א"
       - "ב"
       - "ג"
@@ -292,6 +327,13 @@ lvgl:
   # blue as green with magenta/cyan edge fringing). The screenshot path swaps to
   # little-endian itself for scripts/fbdump.py.
   byte_order: big_endian
+  # Screen sleep after idle. on_idle tracks touch; the encoder feeds LVGL activity
+  # via lv_display_trigger_activity() (see the interval), so a knob turn also keeps
+  # the screen awake / wakes it.
+  on_idle:
+    timeout: 5min
+    then:
+      - script.execute: screen_sleep
   pages:
     # Wi-Fi setup (shown until connected): scan the QR to join the CastKnob-Setup
     # AP, then the captive portal opens to enter home Wi-Fi. Mirrors the vanilla
