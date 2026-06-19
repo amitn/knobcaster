@@ -69,6 +69,13 @@ void SH8601::setup() {
     heap_caps_free(blank);
   }
 
+  // Persistent internal-DMA flush buffer, pre-sized so runtime flushes never
+  // realloc or fall back to the (unreliable) PSRAM path. 48KB covers ~1/5 screen,
+  // comfortably above the LVGL partial-buffer flush size (buffer_size: 12%).
+  dma_cap_ = 48 * 1024;
+  dma_buf_ = (uint8_t *) heap_caps_malloc(dma_cap_, MALLOC_CAP_DMA);
+  if (dma_buf_ == nullptr) dma_cap_ = 0;
+
   // Screenshot mirror (optional — screenshots disabled if it won't allocate).
   fb_ = (uint16_t *) heap_caps_malloc((size_t) width_ * height_ * 2, MALLOC_CAP_SPIRAM);
   ESP_LOGCONFIG(TAG, "SH8601 %dx%d ready (screenshot=%s)", width_, height_, fb_ ? "on" : "off");
@@ -147,7 +154,9 @@ void SH8601::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_
   }
   // esp_lcd uses exclusive end coordinates and a tightly-packed RGB565 buffer,
   // which is how LVGL flushes a rectangular dirty area (x_offset/x_pad are 0).
-  esp_lcd_panel_draw_bitmap(panel_, x_start, y_start, x_start + w, y_start + h, out);
+  esp_err_t e = esp_lcd_panel_draw_bitmap(panel_, x_start, y_start, x_start + w, y_start + h, out);
+  if (e != ESP_OK)
+    ESP_LOGW(TAG, "draw %dx%d@%d,%d failed: %s", w, h, x_start, y_start, esp_err_to_name(e));
 
   // Mirror the flush into the screenshot framebuffer (row by row into the rect).
   if (fb_ != nullptr) {
