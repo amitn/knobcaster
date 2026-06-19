@@ -37,7 +37,9 @@ cast_controller:
   volume:        { name: "Cast volume" }            # sensor (%)
 ```
 
-Runtime behaviour (discovery → session → entity values) needs the board to validate;
-the linkage and HA-entity codegen are proven. **Next:** device selection + a warm session, then the LVGL UI (Phase 2) — the SH8601 display init still needs porting + on-device validation.
-controls (buttons/number) and a warm session, then the LVGL UI (Phase 2) — and the
-SH8601 display init still needs porting + on-device validation.
+It also exposes HA **controls** — a volume `number` and play/pause/next/prev/mute
+`button`s — routed to the session via a command queue. Runtime behaviour (discovery
+→ session → entity values, and control round-trips) needs the board to validate; the
+linkage and HA-entity/control codegen are proven. **Next:** device selection + a warm
+session, then the LVGL UI (Phase 2) — the SH8601 display init still needs porting +
+on-device validation.
