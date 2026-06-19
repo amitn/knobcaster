@@ -44,7 +44,9 @@ class SH8601 : public display::Display {
   int cs_{0}, rst_{0}, clk_{0}, d0_{0}, d1_{0}, d2_{0}, d3_{0};
   int width_{360}, height_{360};
   esp_lcd_panel_handle_t panel_{nullptr};
-  uint16_t *fb_{nullptr};  // PSRAM mirror of what's on screen, for screenshots
+  uint16_t *fb_{nullptr};       // PSRAM mirror of what's on screen, for screenshots
+  uint8_t *dma_buf_{nullptr};   // persistent internal-DMA bounce for the SPI flush
+  size_t dma_cap_{0};
 };
 
 }  // namespace sh8601

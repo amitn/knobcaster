@@ -99,6 +99,11 @@ wifi:
   # provisioning component). HA/ESPHome can also push creds.
   ap:
     ssid: "CastKnob-Setup"
+  # Show the Wi-Fi-setup QR screen until connected, then the now-playing screen.
+  on_connect:
+    - lvgl.page.show: now_playing
+  on_disconnect:
+    - lvgl.page.show: wifi_setup
 
 captive_portal:
 
@@ -205,6 +210,29 @@ lvgl:
   # (colors came out byte-swapped — blue arc rendered green).
   byte_order: little_endian
   pages:
+    # Wi-Fi setup (shown until connected): scan the QR to join the CastKnob-Setup
+    # AP, then the captive portal opens to enter home Wi-Fi. Mirrors the vanilla
+    # provisioning screen.
+    - id: wifi_setup
+      bg_color: 0x000000
+      widgets:
+        - label:
+            align: TOP_MID
+            y: 36
+            text: "Set up Wi-Fi"
+            text_color: 0xFFFFFF
+        - qrcode:
+            id: wifi_qr
+            align: CENTER
+            size: 170
+            light_color: 0xFFFFFF   # light bg so phones can scan it
+            dark_color: 0x000000
+            text: "WIFI:S:CastKnob-Setup;T:nopass;;"
+        - label:
+            align: BOTTOM_MID
+            y: -34
+            text: "Scan, or join CastKnob-Setup"
+            text_color: 0xAAAAAA
     - id: now_playing
       bg_color: 0x000000
       widgets:

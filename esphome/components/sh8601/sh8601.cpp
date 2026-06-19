@@ -60,6 +60,15 @@ void SH8601::setup() {
   esp_lcd_panel_init(panel_);
   esp_lcd_panel_disp_on_off(panel_, true);
 
+  // Clear power-on garbage to black, row by row from a small internal-DMA buffer
+  // (so undrawn-by-LVGL areas aren't left as artifacts).
+  uint16_t *blank = (uint16_t *) heap_caps_calloc(width_, 2, MALLOC_CAP_DMA);
+  if (blank) {
+    for (int y = 0; y < height_; y++)
+      esp_lcd_panel_draw_bitmap(panel_, 0, y, width_, y + 1, blank);
+    heap_caps_free(blank);
+  }
+
   // Screenshot mirror (optional — screenshots disabled if it won't allocate).
   fb_ = (uint16_t *) heap_caps_malloc((size_t) width_ * height_ * 2, MALLOC_CAP_SPIRAM);
   ESP_LOGCONFIG(TAG, "SH8601 %dx%d ready (screenshot=%s)", width_, height_, fb_ ? "on" : "off");
@@ -118,9 +127,27 @@ void SH8601::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_
                             display::ColorOrder order, display::ColorBitness bitness,
                             bool big_endian, int x_offset, int y_offset, int x_pad) {
   if (panel_ == nullptr) return;
+  // LVGL's buffer is in PSRAM; passing it straight to esp_lcd makes the SPI
+  // driver allocate a per-transfer DMA bounce buffer, which fails intermittently
+  // under memory pressure -> dropped regions show as artifacts. Copy into our own
+  // persistent internal-DMA buffer so the source is always DMA-capable.
+  size_t len = (size_t) w * h * 2;
+  const uint8_t *out = (const uint8_t *) ptr;
+  if (len > dma_cap_) {
+    uint8_t *nb = (uint8_t *) heap_caps_malloc(len, MALLOC_CAP_DMA);
+    if (nb != nullptr) {
+      heap_caps_free(dma_buf_);
+      dma_buf_ = nb;
+      dma_cap_ = len;
+    }
+  }
+  if (dma_buf_ != nullptr && len <= dma_cap_) {
+    std::memcpy(dma_buf_, ptr, len);
+    out = dma_buf_;
+  }
   // esp_lcd uses exclusive end coordinates and a tightly-packed RGB565 buffer,
   // which is how LVGL flushes a rectangular dirty area (x_offset/x_pad are 0).
-  esp_lcd_panel_draw_bitmap(panel_, x_start, y_start, x_start + w, y_start + h, ptr);
+  esp_lcd_panel_draw_bitmap(panel_, x_start, y_start, x_start + w, y_start + h, out);
 
   // Mirror the flush into the screenshot framebuffer (row by row into the rect).
   if (fb_ != nullptr) {
