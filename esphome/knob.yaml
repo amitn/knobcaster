@@ -183,6 +183,9 @@ binary_sensor:
       number: 0          # BOOT/strapping, active-low
       mode: INPUT_PULLUP
       inverted: true
+    # Press cycles to the next discovered speaker (watch the device name update).
+    on_press:
+      - lambda: "id(cast).request_next_device(); id(haptics).play();"
 
 # Album art: fetched + JPEG-decoded over HTTP (mirrors components/albumart). The
 # cast_controller art_url binding sets the URL and triggers update() per track.

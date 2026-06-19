@@ -58,20 +58,23 @@ void CastController::task_main() {
   static cast_device_t scan[CAST_MAX_DEVICES];
   cast_session_t *sess = nullptr;
 
+  int n = 0;
   for (;;) {
-    // Periodic discovery; keep following the first device (selection: TODO).
-    int n = cast_discovery_scan(scan, CAST_MAX_DEVICES, 3000);
+    // Periodic discovery; keep the selection valid as the list changes.
+    n = cast_discovery_scan(scan, CAST_MAX_DEVICES, 3000);
+    if (sel_index_ >= n) sel_index_ = 0;
     xSemaphoreTake(lock_, portMAX_DELAY);
     snap_count_ = n;
     xSemaphoreGive(lock_);
 
     if (n > 0 && !sess) {
-      sess = cast_session_open(&scan[0]);
+      sess = cast_session_open(&scan[sel_index_]);
       if (sess) {
-        ESP_LOGI(TAG, "session open: %s", scan[0].friendly_name);
+        ESP_LOGI(TAG, "session open: %s", scan[sel_index_].friendly_name);
         xSemaphoreTake(lock_, portMAX_DELAY);
-        std::strncpy(snap_device_, scan[0].friendly_name, sizeof(snap_device_) - 1);
+        std::strncpy(snap_device_, scan[sel_index_].friendly_name, sizeof(snap_device_) - 1);
         snap_device_[sizeof(snap_device_) - 1] = '\0';
+        snap_now_[0] = '\0';  // clear stale now-playing while the new one loads
         xSemaphoreGive(lock_);
       }
     }
@@ -79,7 +82,25 @@ void CastController::task_main() {
     // Service the session for a while: drain commands, poll, publish snapshots.
     for (int i = 0; i < 60 && sess; i++) {
       CastCmd c;
-      while (xQueueReceive(cmd_q_, &c, 0) == pdTRUE) apply_cmd(sess, c);
+      int dev_delta = 0;
+      while (xQueueReceive(cmd_q_, &c, 0) == pdTRUE) {
+        if (c.kind == CMD_NEXT_DEVICE) dev_delta = (c.arg < 0) ? -1 : 1;
+        else apply_cmd(sess, c);
+      }
+      if (dev_delta != 0 && n > 0) {  // switch speaker -> reopen the new one now
+        sel_index_ = (sel_index_ + dev_delta + n) % n;
+        cast_session_close(sess);
+        sess = cast_session_open(&scan[sel_index_]);  // snappy: no rescan
+        if (sess) {
+          ESP_LOGI(TAG, "switched to: %s", scan[sel_index_].friendly_name);
+          xSemaphoreTake(lock_, portMAX_DELAY);
+          std::strncpy(snap_device_, scan[sel_index_].friendly_name, sizeof(snap_device_) - 1);
+          snap_device_[sizeof(snap_device_) - 1] = '\0';
+          snap_now_[0] = '\0';
+          xSemaphoreGive(lock_);
+        }
+        continue;
+      }
 
       if (!cast_session_poll(sess, 500)) {  // died -> reopen next discovery cycle
         cast_session_close(sess);
@@ -112,6 +133,8 @@ void CastController::request_step_volume(float pct) { enqueue(CMD_VOLUME_STEP, p
 void CastController::request_mute() { enqueue(CMD_MUTE, 0); }
 void CastController::request_play_pause() { enqueue(CMD_PLAYPAUSE, 0); }
 void CastController::request_next() { enqueue(CMD_NEXT, 0); }
+void CastController::request_next_device() { enqueue(CMD_NEXT_DEVICE, +1); }
+void CastController::request_prev_device() { enqueue(CMD_NEXT_DEVICE, -1); }
 void CastController::request_prev() { enqueue(CMD_PREV, 0); }
 
 void CastController::loop() {

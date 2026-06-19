@@ -19,6 +19,7 @@ enum CastCmdKind : uint8_t {
   CMD_PLAYPAUSE,
   CMD_NEXT,
   CMD_PREV,
+  CMD_NEXT_DEVICE,  // switch the active speaker (+1 / -1, by arg sign)
 };
 
 // ESPHome wrapper over the shared components/cast/ stack. Discovery + Cast
@@ -47,6 +48,8 @@ class CastController : public Component {
   void request_play_pause();
   void request_next();
   void request_prev();
+  void request_next_device();   // switch to the next discovered speaker
+  void request_prev_device();
 
  protected:
   static void task_trampoline(void *arg);
@@ -60,6 +63,7 @@ class CastController : public Component {
   sensor::Sensor *volume_{nullptr};
 
   QueueHandle_t cmd_q_{nullptr};   // HA/UI commands -> session task
+  int sel_index_{0};               // active device index (task-owned)
 
   // Shared snapshot: task writes under lock_, loop() reads.
   SemaphoreHandle_t lock_{nullptr};
