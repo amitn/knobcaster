@@ -89,6 +89,10 @@ test:
 gen-font:
     uv run python scripts/gen_font.py
 
+# Regenerate the committed ESPHome UI font subset (esphome/fonts/DejaVuSans-knob.ttf).
+gen-esphome-font:
+    uvx --from esphome --with fonttools python scripts/gen_esphome_font.py
+
 # Physical UI smoke test: drive the device over serial, screenshot each step into
 # uitest_shots/ + write EXPECTATIONS.md (an agent/human verifies the shots).
 uitest:
