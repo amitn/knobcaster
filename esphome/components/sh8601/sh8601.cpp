@@ -76,6 +76,9 @@ void SH8601::setup() {
   dma_buf_ = (uint8_t *) heap_caps_malloc(dma_cap_, MALLOC_CAP_DMA);
   if (dma_buf_ == nullptr) dma_cap_ = 0;
 
+  if (logger::global_logger != nullptr)
+    log_level_ = logger::global_logger->get_log_level();  // for screenshot restore
+
   // Screenshot mirror (optional — screenshots disabled if it won't allocate).
   fb_ = (uint16_t *) heap_caps_malloc((size_t) width_ * height_ * 2, MALLOC_CAP_SPIRAM);
   ESP_LOGCONFIG(TAG, "SH8601 %dx%d ready (screenshot=%s)", width_, height_, fb_ ? "on" : "off");
@@ -86,11 +89,10 @@ void SH8601::dump_screen() {
   // Silence the (shared) console logger during the dump — otherwise its text
   // congests the USB-Serial/JTAG TX and corrupts/stalls the binary stream. This
   // also gates ESP-IDF logs from the cast task. Restore afterwards.
-  int prev_level = ESPHOME_LOG_LEVEL_DEBUG;
-  if (logger::global_logger != nullptr) {
-    prev_level = logger::global_logger->get_log_level();
+  // Restore to the level captured at setup (NOT the current one) so a prior
+  // interrupted dump can't propagate a stuck NONE.
+  if (logger::global_logger != nullptr)
     logger::global_logger->set_log_level(ESPHOME_LOG_LEVEL_NONE);
-  }
 
   // Header + raw RGB565, decoded by scripts/fbdump.py (`just shot`). The write
   // runs synchronously on the main loop; usb_serial_jtag_write_bytes needs an
@@ -129,7 +131,7 @@ void SH8601::dump_screen() {
     usb_serial_jtag_write_bytes((const uint8_t *) "\n--FBEND--\n", 11, WTO);
 
   if (logger::global_logger != nullptr)
-    logger::global_logger->set_log_level(prev_level);
+    logger::global_logger->set_log_level(log_level_);
 }
 
 void SH8601::draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr,

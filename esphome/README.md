@@ -43,3 +43,11 @@ It also exposes HA **controls** — a volume `number` and play/pause/next/prev/m
 linkage and HA-entity/control codegen are proven. **Next:** device selection + a warm
 session, then the LVGL UI (Phase 2) — the SH8601 display init still needs porting +
 on-device validation.
+
+## SH8601 display component
+
+ESPHome's built-in `qspi_dbi` mis-frames SH8601 QSPI commands, so this repo
+ships a custom `display: platform: sh8601` (`esphome/components/sh8601/`) that
+wraps the `esp_lcd_sh8601` IDF driver — the same one the vanilla firmware uses —
+and shares the init table (`components/bsp/include/sh8601_init_cmds.h`). No
+public ESPHome SH8601 component existed (esphome discussion #3229).

@@ -46,6 +46,7 @@ class SH8601 : public display::Display {
   uint16_t *fb_{nullptr};       // PSRAM mirror of what's on screen, for screenshots
   uint8_t *dma_buf_{nullptr};   // persistent internal-DMA bounce for the SPI flush
   size_t dma_cap_{0};
+  int log_level_{5};            // configured logger level, restored after a dump
 };
 
 }  // namespace sh8601
