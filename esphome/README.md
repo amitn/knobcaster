@@ -25,7 +25,19 @@ just esphome-run                   # build + flash + log (needs the board)
 
 ## Progress (Phase 3)
 
-`cast_controller` runs **real discovery** on a background FreeRTOS task (so it never
-blocks ESPHome's main loop), reusing `components/cast/cast_discovery.c` + the IDF
-`mdns` component — compile-verified to link. Next: open Cast sessions and expose
-now-playing / volume / transport as ESPHome entities for Home Assistant.
+`cast_controller` runs discovery **and Cast sessions** on a background FreeRTOS task
+(so it never blocks ESPHome's main loop), reusing the whole shared stack
+(`cast_discovery` + `cast_connection` + `cast_session` + `cast_status`, mDNS + TLS) —
+all compile-verified to link. It exposes **Home Assistant entities**:
+
+```yaml
+cast_controller:
+  devices_found: { name: "Cast devices found" }   # sensor
+  now_playing:   { name: "Now playing" }           # text_sensor
+  volume:        { name: "Cast volume" }            # sensor (%)
+```
+
+Runtime behaviour (discovery → session → entity values) needs the board to validate;
+the linkage and HA-entity codegen are proven. **Next:** device selection + transport
+controls (buttons/number) and a warm session, then the LVGL UI (Phase 2) — and the
+SH8601 display init still needs porting + on-device validation.

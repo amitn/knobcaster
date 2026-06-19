@@ -33,6 +33,12 @@ external_components:
       path: components
 
 cast_controller:
+  devices_found:
+    name: "Cast devices found"
+  now_playing:
+    name: "Now playing"
+  volume:
+    name: "Cast volume"
 
 # --- Connectivity ------------------------------------------------------------
 wifi:
