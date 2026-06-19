@@ -69,3 +69,35 @@ jobs:
 
       - name: Compile firmware
         run: just build
+
+  esphome:
+    name: ESPHome build (shared cast stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (+ cache its tool downloads)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      # ESPHome compiles via PlatformIO/ESP-IDF too (~GB toolchain); cache it.
+      - name: Cache ESPHome PlatformIO toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: esphome-pio-${{ runner.os }}-${{ hashFiles('esphome/knob.yaml', 'components/cast/**') }}
+          restore-keys: |
+            esphome-pio-${{ runner.os }}-
+
+      # Validate + compile the ESPHome target. This is the gate that keeps the
+      # two-target reuse honest: it builds components/cast/ into the ESPHome
+      # firmware, so a change there that breaks the ESPHome build fails CI.
+      - name: Validate ESPHome config
+        run: just esphome-config
+
+      - name: Compile ESPHome firmware
+        run: just esphome-build

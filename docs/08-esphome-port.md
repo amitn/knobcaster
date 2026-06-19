@@ -67,20 +67,26 @@ carry over unchanged.
 realistically a multi-phase effort, with Phase 3 (the Cast external component) the
 dominant chunk.
 
-## Phased plan
+## Phased plan & status
 
-1. **Hardware bring-up** (`esphome/knob.yaml`) — esp-idf + psram, SH8601 QSPI display,
-   CST816 touch, rotary encoder, button, backlight, wifi, ota. Goal: the board boots
-   under ESPHome and shows a test UI. *Riskiest single item: the SH8601 QSPI config.*
-2. **LVGL UI** — now-playing screen (device name, title/artist, volume arc, transport
-   buttons, progress bar) as `lvgl` widgets bound to `globals`.
-3. **`cast_controller` external component** — port `cast/` (discovery, connection,
-   proto, session, status) into an ESPHome `external_components` C++ component that
-   exposes state (now-playing, volume, device list) and actions (set volume, mute,
-   transport, switch device). **The core work.**
-4. **Wire UI ↔ cast** via lambdas/automations; album art via `online_image`; haptics
-   as a small custom component.
-5. **HA + polish** — expose entities to Home Assistant, improv provisioning, sleep.
+Everything below **compiles** (`just esphome-build`, gated in CI alongside the
+vanilla build); nothing is **runtime-validated** yet — that needs the board.
+
+1. ✅ **Hardware bring-up** (`esphome/knob.yaml`) — esp-idf + octal psram, SH8601 QSPI
+   display (185-cmd init ported from `display.c` via `just esphome-gen-init`), CST816
+   touch, rotary encoder→volume, button, backlight, wifi+captive_portal+improv, ota.
+   *On-device unknown: does the ported SH8601 init render under qspi_dbi.*
+2. ✅ **LVGL UI** — now-playing page (volume arc, device + title labels, on-screen
+   transport) bound to the cast entities via `on_value` automations.
+3. ✅ **`cast_controller` external component** — builds the shared `components/cast/`
+   verbatim (`add_idf_component`) and drives it on a background task; discovery +
+   sessions + status all link. *Stub: follows the first device; selection + warm pool
+   TODO.*
+4. ✅ **Wire UI ↔ cast + HA** — sensors (devices/now-playing/device/volume) and
+   controls (volume number, play/pause/next/prev/mute buttons, knob→volume) via a
+   command queue. *TODO: album art (`online_image`), haptics (custom component).*
+5. ⏳ **Polish** — device selection, warm session pool, optimistic UI, sleep — best
+   driven by on-device behaviour.
 
 ## Recommendation
 
