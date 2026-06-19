@@ -1,0 +1,5 @@
+# Makes components/cast/ self-contained: it declares its own cJSON dependency,
+# so both the vanilla IDF app and the ESPHome target resolve it from here (no
+# need to list it in each app's manifest).
+dependencies:
+  espressif/cjson: "*"

@@ -107,3 +107,17 @@ web-flash-local port="8000": build
 # Preview without tagging:  just release patch --dry-run
 release level="patch" *flags="":
     uv run python scripts/release.py {{level}} {{flags}}
+
+# --- ESPHome port (branch esphome-port) -------------------------------------
+
+# Validate the ESPHome YAML (fast; no toolchain download).
+esphome-config:
+    uvx esphome config esphome/knob.yaml
+
+# Compile the ESPHome firmware (slow first time — downloads the ESP-IDF toolchain).
+esphome-build:
+    uvx esphome compile esphome/knob.yaml
+
+# Build + flash + log over USB (needs the board on this machine).
+esphome-run:
+    uvx esphome run esphome/knob.yaml

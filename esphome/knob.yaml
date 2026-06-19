@@ -25,6 +25,15 @@ logger:
   # Native USB-Serial/JTAG console, like the IDF build.
   hardware_uart: USB_SERIAL_JTAG
 
+# Local external components (esphome/components/). cast_controller builds the
+# shared components/cast/ stack into this target — same code as the IDF firmware.
+external_components:
+  - source:
+      type: local
+      path: components
+
+cast_controller:
+
 # --- Connectivity ------------------------------------------------------------
 wifi:
   # No creds compiled in: fall back to an AP + captive portal (mirrors our

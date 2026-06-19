@@ -1,7 +1,23 @@
 # 08 — ESPHome port (feasibility + plan)
 
-> Status: **exploratory** (branch `esphome-port`). This doc is the assessment and
-> roadmap; only the Phase-1 hardware scaffold (`esphome/knob.yaml`) is started.
+> Status: **exploratory** (branch `esphome-port`). Phase-1 hardware scaffold builds;
+> the **shared-component reuse is proven** — `components/cast/` compiles into *both*
+> the vanilla IDF firmware and the ESPHome firmware (one source of truth).
+
+## Two targets, one shared core (working)
+
+Both firmwares build the **same** `components/cast/` ESP-IDF component:
+
+- **Vanilla** (`main`, PlatformIO + ESP-IDF) — uses it directly via `components/`.
+- **ESPHome** (`esphome/knob.yaml`) — the `cast_controller` external component
+  (`esphome/components/cast_controller/`) calls `add_idf_component(name="cast",
+  path=…/components/cast)` so ESPHome's IDF build compiles it verbatim, then a thin
+  C++ wrapper calls into it. `components/cast/idf_component.yml` declares its own
+  cJSON dep, so it's self-contained and both targets resolve it identically.
+
+Verified: `just esphome-build` links `cast_parse_type` from the shared `cast_status.c`
+into the ESPHome firmware, and `just build` (vanilla) still compiles. No code is
+duplicated — the Cast stack has a single home.
 
 ## Can we port to ESPHome? Yes — but with one big caveat
 
