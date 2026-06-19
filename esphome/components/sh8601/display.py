@@ -23,7 +23,7 @@ from esphome.const import (
 
 from . import SH8601
 
-DEPENDENCIES = ["esp32"]
+DEPENDENCIES = ["esp32", "logger"]
 
 CONF_CLK_PIN = "clk_pin"
 CONF_DATA_PINS = "data_pins"

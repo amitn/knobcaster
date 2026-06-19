@@ -38,7 +38,7 @@ effort, and it's where the device's value lives.
 
 | Current (ESP-IDF, this repo) | ESPHome equivalent |
 |------------------------------|--------------------|
-| SH8601 QSPI display (`bsp/display.c`, `esp_lcd_sh8601`) | `display: platform: qspi_dbi` + custom `init_sequence` (port the ~190 cmds) — **needs on-device validation** |
+| SH8601 QSPI display (`bsp/display.c`, `esp_lcd_sh8601`) | **custom `display: platform: sh8601`** (`esphome/components/sh8601/`) wrapping the same `esp_lcd_sh8601` IDF driver — built-in `qspi_dbi` mis-frames SH8601 QSPI cmds (esphome #3229). Shares the init table. |
 | CST816 touch (`bsp/touch.c`) | `touchscreen: platform: cst816` ✅ built-in |
 | Encoder via PCNT (`bsp/knob.c`) | `sensor: platform: rotary_encoder` ✅ (PCNT). Note: our anti-glitch "departure-from-0" logic may still be needed — see [02](02-architecture.md) |
 | Button GPIO0 | `binary_sensor: platform: gpio` ✅ |
@@ -73,9 +73,9 @@ Everything below **compiles** (`just esphome-build`, gated in CI alongside the
 vanilla build); nothing is **runtime-validated** yet — that needs the board.
 
 1. ✅ **Hardware bring-up** (`esphome/knob.yaml`) — esp-idf + octal psram, SH8601 QSPI
-   display (185-cmd init ported from `display.c` via `just esphome-gen-init`), CST816
+   display (custom `sh8601` component wrapping `esp_lcd_sh8601`, shared init table), CST816
    touch, rotary encoder→volume, button, backlight, wifi+captive_portal+improv, ota.
-   *On-device unknown: does the ported SH8601 init render under qspi_dbi.*
+   *Validated on hardware — renders the LVGL UI correctly (RGB565 byte_order: little_endian; lvgl buffer_size 12% so the SPI DMA bounce buffer fits). Screenshots via `just shot` (the sh8601 component streams its framebuffer on the 'S' key, like fbdump).*
 2. ✅ **LVGL UI** — now-playing page (volume arc, device + title labels, on-screen
    transport) bound to the cast entities via `on_value` automations.
 3. ✅ **`cast_controller` external component** — builds the shared `components/cast/`

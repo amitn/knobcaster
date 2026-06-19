@@ -15,9 +15,15 @@ namespace sh8601 {
 class SH8601 : public display::Display {
  public:
   void setup() override;
+  void loop() override;      // polls the serial console for the 'S' screenshot key
   void update() override {}  // LVGL drives draws; nothing periodic
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::HARDWARE; }
+
+  // Stream the current framebuffer over USB-Serial/JTAG (same format as the
+  // vanilla fbdump: `--FBDUMP W H RGB565--` + raw RGB565). Decode with
+  // scripts/esphome_shot.py. Also callable from automations.
+  void dump_screen();
 
   void draw_pixels_at(int x_start, int y_start, int w, int h, const uint8_t *ptr,
                       display::ColorOrder order, display::ColorBitness bitness, bool big_endian,
@@ -38,6 +44,7 @@ class SH8601 : public display::Display {
   int cs_{0}, rst_{0}, clk_{0}, d0_{0}, d1_{0}, d2_{0}, d3_{0};
   int width_{360}, height_{360};
   esp_lcd_panel_handle_t panel_{nullptr};
+  uint16_t *fb_{nullptr};  // PSRAM mirror of what's on screen, for screenshots
 };
 
 }  // namespace sh8601
