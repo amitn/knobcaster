@@ -14,5 +14,18 @@ equivalent and is Phase 3: a custom `external_components` C++ port of
 `components/cast/`. The ESP-IDF firmware on `main` stays the working reference.
 
 ```bash
-esphome run esphome/knob.yaml      # build/flash via ESPHome (needs `pip install esphome`)
+just esphome-config                # validate (fast)
+just esphome-build                 # compile (uvx esphome; first run downloads the toolchain)
+just esphome-run                   # build + flash + log (needs the board)
 ```
+
+> After changing a shared component's IDF dependencies, run
+> `uvx esphome clean esphome/knob.yaml` once — an incremental reconfigure can hit a
+> spurious "Multiple ways to build … esp_efuse_fields.c.o"; a clean build fixes it.
+
+## Progress (Phase 3)
+
+`cast_controller` runs **real discovery** on a background FreeRTOS task (so it never
+blocks ESPHome's main loop), reusing `components/cast/cast_discovery.c` + the IDF
+`mdns` component — compile-verified to link. Next: open Cast sessions and expose
+now-playing / volume / transport as ESPHome entities for Home Assistant.

@@ -11,7 +11,10 @@ static const char *TAG = "cast.disc";
 
 void cast_discovery_init(void)
 {
-    ESP_ERROR_CHECK(mdns_init());
+    // Tolerate mDNS already being up: the ESPHome target initialises mDNS itself,
+    // so a second mdns_init() returns ESP_ERR_INVALID_STATE (not a failure here).
+    esp_err_t e = mdns_init();
+    if (e != ESP_OK && e != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(e);
 }
 
 // Case-insensitive substring search (strcasestr isn't portable in newlib).
