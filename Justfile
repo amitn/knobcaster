@@ -121,3 +121,8 @@ esphome-build:
 # Build + flash + log over USB (needs the board on this machine).
 esphome-run:
     uvx esphome run esphome/knob.yaml
+
+# Re-port the SH8601 init sequence from components/bsp/display.c into knob.yaml
+# (display.c stays the single source of truth for the panel init).
+esphome-gen-init:
+    uv run python scripts/gen_esphome_init.py
