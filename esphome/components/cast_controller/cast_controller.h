@@ -6,9 +6,13 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/queue.h"
 
 namespace esphome {
 namespace cast_controller {
+
+// Transport command kinds (HA/UI -> session task, via cmd_q_).
+enum CastCmdKind : uint8_t { CMD_VOLUME = 0, CMD_MUTE, CMD_PLAYPAUSE, CMD_NEXT, CMD_PREV };
 
 // ESPHome wrapper over the shared components/cast/ stack. Discovery + Cast
 // sessions run on a background FreeRTOS task (like the IDF app's net loop) so
@@ -26,6 +30,12 @@ class CastController : public Component {
   void set_now_playing_sensor(text_sensor::TextSensor *s) { now_playing_ = s; }
   void set_volume_sensor(sensor::Sensor *s) { volume_ = s; }
 
+  // Control entry points (call from ESPHome lambdas/main loop). They enqueue a
+  // command for the session task to apply — the session is single-threaded.
+  void request_set_volume(float pct);   // 0..100
+  void request_mute();
+  void request_transport(int kind);     // CMD_PLAYPAUSE / CMD_NEXT / CMD_PREV
+
  protected:
   static void task_trampoline(void *arg);
   void task_main();
@@ -33,6 +43,8 @@ class CastController : public Component {
   sensor::Sensor *devices_found_{nullptr};
   text_sensor::TextSensor *now_playing_{nullptr};
   sensor::Sensor *volume_{nullptr};
+
+  QueueHandle_t cmd_q_{nullptr};   // HA/UI commands -> session task
 
   // Shared snapshot: task writes under lock_, loop() reads.
   SemaphoreHandle_t lock_{nullptr};

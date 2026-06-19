@@ -38,6 +38,6 @@ cast_controller:
 ```
 
 Runtime behaviour (discovery → session → entity values) needs the board to validate;
-the linkage and HA-entity codegen are proven. **Next:** device selection + transport
+the linkage and HA-entity codegen are proven. **Next:** device selection + a warm session, then the LVGL UI (Phase 2) — the SH8601 display init still needs porting + on-device validation.
 controls (buttons/number) and a warm session, then the LVGL UI (Phase 2) — and the
 SH8601 display init still needs porting + on-device validation.

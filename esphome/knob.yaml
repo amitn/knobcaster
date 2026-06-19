@@ -33,12 +33,43 @@ external_components:
       path: components
 
 cast_controller:
+  id: cast
   devices_found:
     name: "Cast devices found"
   now_playing:
     name: "Now playing"
   volume:
     name: "Cast volume"
+
+# HA-controllable entities -> cast_controller command queue (template platforms,
+# so no custom number/button platform code is needed).
+number:
+  - platform: template
+    name: "Cast volume set"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: true
+    set_action:
+      - lambda: "id(cast).request_set_volume(x);"
+
+button:
+  - platform: template
+    name: "Play/Pause"
+    on_press:
+      - lambda: "id(cast).request_transport(2 /*CMD_PLAYPAUSE*/);"
+  - platform: template
+    name: "Next track"
+    on_press:
+      - lambda: "id(cast).request_transport(3 /*CMD_NEXT*/);"
+  - platform: template
+    name: "Previous track"
+    on_press:
+      - lambda: "id(cast).request_transport(4 /*CMD_PREV*/);"
+  - platform: template
+    name: "Mute toggle"
+    on_press:
+      - lambda: "id(cast).request_mute();"
 
 # --- Connectivity ------------------------------------------------------------
 wifi:
