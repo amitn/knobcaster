@@ -95,14 +95,20 @@ void SH8601::dump_screen() {
   // Header + raw RGB565, decoded by scripts/fbdump.py (`just shot`). The write
   // runs synchronously on the main loop; usb_serial_jtag_write_bytes needs an
   // internal-RAM source, so the PSRAM mirror is bounced in chunks.
+  // Bounded per-write timeout: long enough that a reading host completes, but if
+  // the host stops/closes mid-stream the dump ABORTS instead of blocking the main
+  // loop forever (a portMAX_DELAY here wedged the whole device). The logger is
+  // always restored below.
+  const TickType_t WTO = pdMS_TO_TICKS(2000);
   char hdr[40];
   int n = snprintf(hdr, sizeof(hdr), "\n--FBDUMP %d %d RGB565--\n", width_, height_);
-  usb_serial_jtag_write_bytes((const uint8_t *) hdr, n, pdMS_TO_TICKS(1000));
+  usb_serial_jtag_write_bytes((const uint8_t *) hdr, n, WTO);
 
   static uint8_t bounce[256];  // internal RAM
   const uint8_t *src = (const uint8_t *) fb_;
   size_t total = (size_t) width_ * height_ * 2, off = 0;
-  while (off < total) {
+  bool aborted = false;
+  while (off < total && !aborted) {
     size_t chunk = total - off;
     if (chunk > sizeof(bounce)) chunk = sizeof(bounce);
     // Byte-swap each pixel: the panel buffer is big-endian RGB565, but
@@ -113,16 +119,14 @@ void SH8601::dump_screen() {
     }
     size_t w = 0;
     while (w < chunk) {
-      // Block until the host drains the FIFO (portMAX_DELAY): a fixed timeout
-      // bails when the TX backs up, which truncated the stream to 0 bytes.
-      int k = usb_serial_jtag_write_bytes(bounce + w, chunk - w, portMAX_DELAY);
-      if (k <= 0) break;
+      int k = usb_serial_jtag_write_bytes(bounce + w, chunk - w, WTO);
+      if (k <= 0) { aborted = true; break; }  // host went away -> bail, don't hang
       w += (size_t) k;
     }
     off += chunk;
   }
-  usb_serial_jtag_wait_tx_done(portMAX_DELAY);
-  usb_serial_jtag_write_bytes((const uint8_t *) "\n--FBEND--\n", 11, pdMS_TO_TICKS(1000));
+  if (!aborted)
+    usb_serial_jtag_write_bytes((const uint8_t *) "\n--FBEND--\n", 11, WTO);
 
   if (logger::global_logger != nullptr)
     logger::global_logger->set_log_level(prev_level);
