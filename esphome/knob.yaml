@@ -258,9 +258,9 @@ interval:
             int n = (int) lv_roller_get_option_count(r);
             if (n > 0) {
               int ni = (int) lv_roller_get_selected(r) + d;
-              if (ni < 0) ni = 0;
-              if (ni > n - 1) ni = n - 1;
-              lv_roller_set_selected(r, ni, LV_ANIM_ON);
+              int wrapped = ((ni % n) + n) % n;   // wrap past either end
+              // Animate normal moves; snap on a wrap so it doesn't rewind the whole list.
+              lv_roller_set_selected(r, wrapped, wrapped == ni ? LV_ANIM_ON : LV_ANIM_OFF);
             }
           }
 
@@ -459,27 +459,45 @@ lvgl:
       widgets:
         - label:
             align: TOP_MID
-            y: 24
-            text: "Speakers"
-            text_color: 0xFFFFFF
+            y: 12
+            text: "SPEAKERS"
+            text_color: 0x8A8A8E       # muted header
             text_font: ui_font
+            text_letter_space: 2
         - roller:
             id: spk_roller
             align: CENTER
-            y: 6
-            width: 300
-            visible_row_count: 5
+            y: 2
+            width: 330
+            visible_row_count: 7
             text_font: ui_font
-            base_dir: AUTO   # Hebrew speaker names render RTL
+            base_dir: AUTO             # Hebrew speaker names render RTL
+            # No panel — the list floats directly on the black page.
+            bg_opa: TRANSP
+            text_color: 0xCFCFD2
+            text_line_space: 6
+            border_width: 0
+            pad_all: 4
+            # Highlighted (centered) row -> accent pill.
+            selected:
+              bg_color: 0x0A84FF
+              bg_opa: COVER
+              text_color: 0xFFFFFF
+              radius: 16
             options:
-              - "(no speakers)"   # placeholder, replaced at runtime on swipe-down
+              - "..."                  # placeholder, replaced at runtime on swipe-down
         - button:
             align: BOTTOM_MID
-            y: -22
-            width: 140
-            height: 46
+            y: -16
+            width: 170
+            height: 50
+            radius: 25                 # pill
+            bg_color: 0x0A84FF
+            shadow_color: 0x0A84FF
+            shadow_width: 18
+            shadow_opa: 50%
             widgets:
-              - label: { align: CENTER, text: "Select" }
+              - label: { align: CENTER, text: "Select", text_color: 0xFFFFFF, text_font: ui_font }
             on_press:
               # Switch to the roller's centered speaker, then return to now-playing.
               - lambda: |-
