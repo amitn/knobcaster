@@ -84,7 +84,8 @@ vanilla build); nothing is **runtime-validated** yet — that needs the board.
    TODO.*
 4. ✅ **Wire UI ↔ cast + HA** — sensors (devices/now-playing/device/volume) and
    controls (volume number, play/pause/next/prev/mute buttons, knob→volume) via a
-   command queue. *TODO: album art (`online_image`), haptics (custom component).*
+   command queue, plus **album art** via `online_image` (HTTP+JPEG) on the LVGL
+   background. *TODO: haptics (custom component).*
 5. ⏳ **Polish** — device selection, warm session pool, optimistic UI, sleep — best
    driven by on-device behaviour.
 

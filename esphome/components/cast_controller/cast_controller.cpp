@@ -94,6 +94,8 @@ void CastController::task_main() {
       snprintf(snap_now_, sizeof(snap_now_), "%s%s%s", m.title,
                m.subtitle[0] ? " - " : "", m.subtitle);
       snap_volume_ = (int) (v.level * 100 + 0.5f);
+      std::strncpy(snap_art_, m.art_url, sizeof(snap_art_) - 1);
+      snap_art_[sizeof(snap_art_) - 1] = '\0';
       xSemaphoreGive(lock_);
     }
     if (!sess) vTaskDelay(pdMS_TO_TICKS(2000));  // back off before re-discovering
@@ -115,15 +117,17 @@ void CastController::request_prev() { enqueue(CMD_PREV, 0); }
 void CastController::loop() {
   // Snapshot under lock, then publish (publish_state must run on this thread).
   int count, volume;
-  char now[sizeof(snap_now_)], device[sizeof(snap_device_)];
+  char now[sizeof(snap_now_)], device[sizeof(snap_device_)], art[sizeof(snap_art_)];
   xSemaphoreTake(lock_, portMAX_DELAY);
   count = snap_count_;
   volume = snap_volume_;
   std::strncpy(now, snap_now_, sizeof(now));
   std::strncpy(device, snap_device_, sizeof(device));
+  std::strncpy(art, snap_art_, sizeof(art));
   xSemaphoreGive(lock_);
   now[sizeof(now) - 1] = '\0';
   device[sizeof(device) - 1] = '\0';
+  art[sizeof(art) - 1] = '\0';
 
   if (devices_found_ && count != pub_count_) {
     pub_count_ = count;
@@ -141,6 +145,10 @@ void CastController::loop() {
     std::strncpy(pub_device_, device, sizeof(pub_device_));
     current_device_->publish_state(device);
   }
+  if (art_url_ && std::strcmp(art, pub_art_) != 0) {
+    std::strncpy(pub_art_, art, sizeof(pub_art_));
+    art_url_->publish_state(art);
+  }
 }
 
 void CastController::dump_config() {
@@ -149,6 +157,7 @@ void CastController::dump_config() {
   LOG_SENSOR("  ", "Volume", volume_);
   LOG_TEXT_SENSOR("  ", "Now playing", now_playing_);
   LOG_TEXT_SENSOR("  ", "Current device", current_device_);
+  LOG_TEXT_SENSOR("  ", "Art URL", art_url_);
 }
 
 float CastController::get_setup_priority() const { return setup_priority::AFTER_WIFI; }

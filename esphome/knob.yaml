@@ -48,6 +48,14 @@ cast_controller:
       - lvgl.label.update:
           id: ui_device
           text: !lambda "return x.c_str();"
+  art_url:
+    # Album-art URL from the media status -> fetch via online_image (HTTP + JPEG
+    # decode), then show on the LVGL background image. Internal (long signed URL).
+    id: cast_art_url
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x.length() > 0) { id(art_img).set_url(x.c_str()); id(art_img).update(); }
   volume:
     name: "Cast volume"
     on_value:
@@ -362,9 +370,20 @@ binary_sensor:
       mode: INPUT_PULLUP
       inverted: true
 
+# Album art: fetched + JPEG-decoded over HTTP (mirrors components/albumart). The
+# cast_controller art_url binding sets the URL and triggers update() per track.
+http_request:
+  verify_ssl: false   # Google/Cast art hosts; mirrors the IDF build's skip-verify
+online_image:
+  - id: art_img
+    url: "https://www.gstatic.com/images/branding/product/2x/cast_64dp.png"
+    format: JPEG
+    type: RGB565
+    resize: 360x360
+    update_interval: never
+
 # --- UI (LVGL) ---------------------------------------------------------------
-# Phase-2: now-playing screen (device name, title/artist, volume arc, transport,
-# progress bar). Minimal placeholder for now.
+# Now-playing screen: album-art background, volume arc, device + title, transport.
 lvgl:
   displays:
     - knob_lcd
@@ -374,6 +393,12 @@ lvgl:
     - id: now_playing
       bg_color: 0x000000
       widgets:
+        # Album art, dimmed, behind everything (first widget = bottom z-order).
+        - image:
+            id: ui_art
+            src: art_img
+            align: CENTER
+            opa: 40%
         # Volume ring (updated from the cast volume sensor).
         - arc:
             id: ui_vol_arc
