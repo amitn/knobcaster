@@ -112,7 +112,12 @@ void SH8601::dump_screen() {
   while (off < total) {
     size_t chunk = total - off;
     if (chunk > sizeof(bounce)) chunk = sizeof(bounce);
-    std::memcpy(bounce, src + off, chunk);
+    // Byte-swap each pixel: the panel buffer is big-endian RGB565, but
+    // scripts/fbdump.py decodes little-endian. (chunk is always even.)
+    for (size_t i = 0; i < chunk; i += 2) {
+      bounce[i] = src[off + i + 1];
+      bounce[i + 1] = src[off + i];
+    }
     size_t w = 0;
     while (w < chunk) {
       // Block until the host drains the FIFO (portMAX_DELAY): a fixed timeout

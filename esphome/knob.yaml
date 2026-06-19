@@ -206,9 +206,10 @@ lvgl:
   # Small partial buffer: a full 360x360 flush needs a 259KB internal DMA bounce
   # buffer (LVGL's buffer is in PSRAM), which won't allocate. ~1/8 screen fits.
   buffer_size: 12%
-  # esp_lcd_sh8601 expects little-endian RGB565; LVGL defaults to big-endian here
-  # (colors came out byte-swapped — blue arc rendered green).
-  byte_order: little_endian
+  # esp_lcd_sh8601 wants big-endian RGB565 on the panel (little_endian rendered
+  # blue as green with magenta/cyan edge fringing). The screenshot path swaps to
+  # little-endian itself for scripts/fbdump.py.
+  byte_order: big_endian
   pages:
     # Wi-Fi setup (shown until connected): scan the QR to join the CastKnob-Setup
     # AP, then the captive portal opens to enter home Wi-Fi. Mirrors the vanilla
