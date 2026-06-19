@@ -114,10 +114,12 @@ void CastController::knob_setup() {
 void CastController::knob_poll() {
   int d = s_enc_accum;
   s_enc_accum = 0;
-  if (d != 0) {
+  if (d == 0) return;
+  if (haptics_) haptics_->play();         // click on every detent
+  if (list_mode_)
+    list_scroll_ += d;                    // list page: buffer for the roller
+  else
     this->request_step_volume(d * 3.0f);  // ~3% per detent (sign = direction)
-    if (haptics_) haptics_->play();
-  }
 }
 
 void CastController::setup() {

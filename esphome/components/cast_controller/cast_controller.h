@@ -69,6 +69,13 @@ class CastController : public Component {
   int device_count();
   int current_index();   // index of the active speaker (for per-speaker UI color)
 
+  // Speaker-list mode: while the list page is shown, the encoder scrolls the
+  // roller instead of changing volume. cast_controller stays LVGL-free — it just
+  // buffers the scroll; an LVGL interval in the YAML applies take_list_scroll()
+  // to the roller.
+  void set_list_mode(bool on) { list_mode_ = on; list_scroll_ = 0; }
+  int take_list_scroll() { int s = list_scroll_; list_scroll_ = 0; return s; }
+
  protected:
   static void task_trampoline(void *arg);
   void task_main();
@@ -92,6 +99,8 @@ class CastController : public Component {
   int sel_index_{0};               // active device index (task-owned)
   sh8601::SH8601 *display_{nullptr};
   drv2605::DRV2605 *haptics_{nullptr};
+  bool list_mode_{false};   // encoder scrolls the speaker list instead of volume
+  int list_scroll_{0};      // buffered detents while in list mode
 
   // Shared snapshot: task writes under lock_, loop() reads.
   SemaphoreHandle_t lock_{nullptr};

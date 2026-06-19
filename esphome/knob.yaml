@@ -214,6 +214,24 @@ online_image:
           format: "album art fetch/decode failed"
           level: WARN
 
+# Apply buffered encoder detents to the speaker-list roller (only nonzero while
+# the list page is in list-mode; keeps LVGL out of cast_controller).
+interval:
+  - interval: 80ms
+    then:
+      - lambda: |-
+          int d = id(cast).take_list_scroll();
+          if (d != 0) {
+            lv_obj_t *r = id(spk_roller)->obj;
+            int n = (int) lv_roller_get_option_count(r);
+            if (n > 0) {
+              int ni = (int) lv_roller_get_selected(r) + d;
+              if (ni < 0) ni = 0;
+              if (ni > n - 1) ni = n - 1;
+              lv_roller_set_selected(r, ni, LV_ANIM_ON);
+            }
+          }
+
 # --- Fonts -------------------------------------------------------------------
 # DejaVu Sans subset: Latin (GF_Latin_Core, incl. accented European names) plus
 # the Hebrew letters. The default Montserrat is Latin-only, so Hebrew song titles
@@ -307,11 +325,13 @@ lvgl:
       on_swipe_left:
         - lambda: "id(cast).request_prev_device(); id(haptics).play();"
       on_swipe_down:
-        # Fill the roller from the live discovery list, then show the list page.
+        # Fill the roller from the live discovery list, open it on the active
+        # speaker, switch the encoder to list-scroll mode, then show the page.
         - lambda: |-
-            lv_roller_set_options(id(spk_roller)->obj,
-                                  id(cast).device_list_str().c_str(),
-                                  LV_ROLLER_MODE_NORMAL);
+            lv_obj_t *r = id(spk_roller)->obj;
+            lv_roller_set_options(r, id(cast).device_list_str().c_str(), LV_ROLLER_MODE_NORMAL);
+            lv_roller_set_selected(r, id(cast).current_index(), LV_ANIM_OFF);
+            id(cast).set_list_mode(true);
         - lvgl.page.show: speaker_list
         - lambda: "id(haptics).play();"
       widgets:
@@ -392,6 +412,7 @@ lvgl:
     - id: speaker_list
       bg_color: 0x000000
       on_swipe_up:
+        - lambda: "id(cast).set_list_mode(false);"   # encoder controls volume again
         - lvgl.page.show: now_playing
       widgets:
         - label:
@@ -421,6 +442,7 @@ lvgl:
               # Switch to the roller's centered speaker, then return to now-playing.
               - lambda: |-
                   id(cast).request_select_device(lv_roller_get_selected(id(spk_roller)->obj));
+                  id(cast).set_list_mode(false);
                   id(haptics).play();
               - lvgl.page.show: now_playing
 
