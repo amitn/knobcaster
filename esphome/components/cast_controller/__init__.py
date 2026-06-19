@@ -13,8 +13,10 @@ from esphome.const import CONF_ID
 from esphome.components import sensor, text_sensor
 from esphome.components.esp32 import add_idf_component
 from esphome.components.sh8601 import SH8601
+from esphome.components.drv2605 import DRV2605
 
 CONF_DISPLAY = "display"
+CONF_HAPTICS = "haptics"
 
 AUTO_LOAD = ["sensor", "text_sensor"]
 
@@ -38,6 +40,7 @@ CONFIG_SCHEMA = cv.Schema(
             unit_of_measurement="%", accuracy_decimals=0
         ),
         cv.Optional(CONF_DISPLAY): cv.use_id(SH8601),  # for the 'S' screenshot key
+        cv.Optional(CONF_HAPTICS): cv.use_id(DRV2605),  # click per physical detent/press
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -50,12 +53,16 @@ async def to_code(config):
     # Its own idf_component.yml pulls cJSON.
     add_idf_component(name="cast", path=os.path.join(_ROOT, "components", "cast"))
     cg.add_build_flag("-I" + os.path.join(_ROOT, "components", "cast", "include"))
+    # board_pins.h (encoder/button GPIOs) is shared with the vanilla bsp.
+    cg.add_build_flag("-I" + os.path.join(_ROOT, "components", "bsp", "include"))
 
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
     if CONF_DISPLAY in config:
         cg.add(var.set_display(await cg.get_variable(config[CONF_DISPLAY])))
+    if CONF_HAPTICS in config:
+        cg.add(var.set_haptics(await cg.get_variable(config[CONF_HAPTICS])))
 
     if CONF_DEVICES_FOUND in config:
         s = await sensor.new_sensor(config[CONF_DEVICES_FOUND])

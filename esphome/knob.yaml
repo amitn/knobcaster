@@ -10,6 +10,12 @@
 esphome:
   name: cast-knob
   friendly_name: Cast Knob
+  platformio_options:
+    # Enable LVGL's bidirectional text so RTL Hebrew song titles render in the
+    # correct visual order (ESPHome scans build_flags into lv_conf.h). Pairs with
+    # base_dir: AUTO on the Hebrew labels. Mirrors LV_USE_BIDI in the vanilla build.
+    build_flags:
+      - "-DLV_USE_BIDI=1"
 
 esp32:
   board: esp32-s3-devkitc-1   # custom 16MB flash / 8MB OPI PSRAM (see flash_size)
@@ -35,6 +41,11 @@ external_components:
 cast_controller:
   id: cast
   display: knob_lcd   # for the 'S' screenshot key (serial debug console)
+  haptics: haptics    # click per physical detent
+  # The physical encoder is decoded INSIDE cast_controller (PCNT, ported from
+  # components/bsp/knob.c). ESPHome's stock rotary_encoder can't decode this board
+  # (it pulses PCNT +/-1 per detent and returns to 0), so it is NOT used. The knob
+  # has no push switch, so speaker selection is by touch swipe (see now_playing).
   devices_found:
     name: "Cast devices found"
   now_playing:
@@ -49,14 +60,26 @@ cast_controller:
       - lvgl.label.update:
           id: ui_device
           text: !lambda "return x.c_str();"
+      # On speaker change: hide the old album art (cleared until the new one lands)
+      # and recolor the volume ring so each speaker has a distinct indicator color.
+      - lvgl.widget.hide: ui_art
+      - lambda: |-
+          static const uint32_t palette[] = {
+            0x0A84FF, 0xFF375F, 0x30D158, 0xFF9F0A, 0xBF5AF2, 0x64D2FF, 0xFFD60A, 0xFF6B22};
+          int idx = id(cast).current_index();
+          lv_color_t c = lv_color_hex(palette[idx % 8]);
+          lv_obj_set_style_arc_color(id(ui_vol_arc), c, LV_PART_INDICATOR);
   art_url:
     # Album-art URL from the media status -> fetch via online_image (HTTP + JPEG
     # decode), then show on the LVGL background image. Internal (long signed URL).
     id: cast_art_url
     internal: true
     on_value:
+      # Empty URL (e.g. just switched speakers / no media) -> keep art hidden.
+      # Otherwise fetch; the image is shown again on_download_finished.
       - lambda: |-
           if (x.length() > 0) { id(art_img).set_url(x.c_str()); id(art_img).update(); }
+          else { lv_obj_add_flag(id(ui_art), LV_OBJ_FLAG_HIDDEN); }
   volume:
     name: "Cast volume"
     on_value:
@@ -162,31 +185,11 @@ touchscreen:
     # address 0x15 is the cst816 default
 
 # --- Rotary encoder + button -------------------------------------------------
-sensor:
-  - platform: rotary_encoder
-    name: "Knob"
-    id: knob_encoder
-    pin_a: 8
-    pin_b: 7
-    # Knob -> relative volume on the active speaker. NB: this board pulses +/-1
-    # per detent and returns to 0; detent counting needs on-hardware validation
-    # (the IDF build has anti-glitch decode in bsp/knob.c).
-    on_clockwise:
-      - lambda: "id(cast).request_step_volume(+3); id(haptics).play();"
-    on_anticlockwise:
-      - lambda: "id(cast).request_step_volume(-3); id(haptics).play();"
-
-binary_sensor:
-  - platform: gpio
-    name: "Knob button"
-    id: knob_button
-    pin:
-      number: 0          # BOOT/strapping, active-low
-      mode: INPUT_PULLUP
-      inverted: true
-    # Press cycles to the next discovered speaker (watch the device name update).
-    on_press:
-      - lambda: "id(cast).request_next_device(); id(haptics).play();"
+# Handled inside cast_controller (PCNT encoder + GPIO0 button ISR, decoded by the
+# same algorithm as components/bsp/knob.c). ESPHome's stock `rotary_encoder` /
+# `binary_sensor: gpio` were removed: this board pulses PCNT +/-1 per detent and
+# returns to 0, which the stock accumulator can't decode (it nets ~0 and never
+# fires). Pins: A=8 B=7 button=0 (from board_pins.h).
 
 # Album art: fetched + JPEG-decoded over HTTP (mirrors components/albumart). The
 # cast_controller art_url binding sets the URL and triggers update() per track.
@@ -195,10 +198,67 @@ http_request:
 online_image:
   - id: art_img
     url: "https://www.gstatic.com/images/branding/product/2x/cast_64dp.png"
-    format: JPEG
+    format: JPEG      # Cast/Google art is served as JPEG (on_error logs any mismatch)
     type: RGB565
     resize: 360x360
     update_interval: never
+    # The fetch+decode is async; refresh the LVGL image when it lands, else the
+    # widget keeps showing the previous (or blank) art.
+    on_download_finished:
+      - lvgl.image.update:
+          id: ui_art
+          src: art_img
+      - lvgl.widget.show: ui_art   # reveal once the new art has decoded
+    on_error:
+      - logger.log:
+          format: "album art fetch/decode failed"
+          level: WARN
+
+# --- Fonts -------------------------------------------------------------------
+# DejaVu Sans subset: Latin (GF_Latin_Core, incl. accented European names) plus
+# the Hebrew letters. The default Montserrat is Latin-only, so Hebrew song titles
+# rendered as tofu boxes; this is the ESPHome analogue of the vanilla build's
+# Tiny-TTF DejaVu subset (scripts/gen_font.py). ESPHome ships no Hebrew glyphset,
+# so the Hebrew block (U+05D0..U+05EA + maqaf/geresh/gershayim) is listed
+# explicitly below (UTF-8 literals; all present in DejaVuSans).
+font:
+  - id: ui_font
+    file: "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    size: 20
+    bpp: 4
+    glyphsets:
+      - GF_Latin_Core
+    glyphs:
+      - "א"
+      - "ב"
+      - "ג"
+      - "ד"
+      - "ה"
+      - "ו"
+      - "ז"
+      - "ח"
+      - "ט"
+      - "י"
+      - "ך"
+      - "כ"
+      - "ל"
+      - "ם"
+      - "מ"
+      - "ן"
+      - "נ"
+      - "ס"
+      - "ע"
+      - "ף"
+      - "פ"
+      - "ץ"
+      - "צ"
+      - "ק"
+      - "ר"
+      - "ש"
+      - "ת"
+      - "־"
+      - "׳"
+      - "״"
 
 # --- UI (LVGL) ---------------------------------------------------------------
 # Now-playing screen: album-art background, volume arc, device + title, transport.
@@ -240,6 +300,20 @@ lvgl:
             text_color: 0xAAAAAA
     - id: now_playing
       bg_color: 0x000000
+      # Swipe to change the active speaker (right=next, left=prev); swipe down for
+      # the full speaker list. Gestures fire on the touched widget and bubble up.
+      on_swipe_right:
+        - lambda: "id(cast).request_next_device(); id(haptics).play();"
+      on_swipe_left:
+        - lambda: "id(cast).request_prev_device(); id(haptics).play();"
+      on_swipe_down:
+        # Fill the roller from the live discovery list, then show the list page.
+        - lambda: |-
+            lv_roller_set_options(id(spk_roller)->obj,
+                                  id(cast).device_list_str().c_str(),
+                                  LV_ROLLER_MODE_NORMAL);
+        - lvgl.page.show: speaker_list
+        - lambda: "id(haptics).play();"
       widgets:
         # Album art, dimmed, behind everything (first widget = bottom z-order).
         - image:
@@ -267,6 +341,8 @@ lvgl:
             y: 64
             text: "Cast Knob"
             text_color: 0xFFFFFF
+            text_font: ui_font
+            base_dir: AUTO   # speaker names may be Hebrew (RTL)
         # Now playing "title - artist" (center).
         - label:
             id: ui_title
@@ -277,6 +353,8 @@ lvgl:
             text_align: CENTER
             long_mode: dot
             width: 240
+            text_font: ui_font
+            base_dir: AUTO   # Hebrew song titles render RTL via LV_USE_BIDI
         # Transport buttons -> cast_controller command queue.
         - button:
             align: BOTTOM_MID
@@ -308,6 +386,43 @@ lvgl:
               - label: { align: CENTER, text: ">>" }
             on_press:
               - lambda: "id(cast).request_next();"   # CMD_NEXT
+    # Speaker picker (swipe down from now-playing). The roller is filled at runtime
+    # from the live discovery list; tap a name to switch, or "Select" the centered
+    # one. Swipe up (or Back) returns to now-playing.
+    - id: speaker_list
+      bg_color: 0x000000
+      on_swipe_up:
+        - lvgl.page.show: now_playing
+      widgets:
+        - label:
+            align: TOP_MID
+            y: 24
+            text: "Speakers"
+            text_color: 0xFFFFFF
+            text_font: ui_font
+        - roller:
+            id: spk_roller
+            align: CENTER
+            y: 6
+            width: 300
+            visible_row_count: 5
+            text_font: ui_font
+            base_dir: AUTO   # Hebrew speaker names render RTL
+            options:
+              - "(no speakers)"   # placeholder, replaced at runtime on swipe-down
+        - button:
+            align: BOTTOM_MID
+            y: -22
+            width: 140
+            height: 46
+            widgets:
+              - label: { align: CENTER, text: "Select" }
+            on_press:
+              # Switch to the roller's centered speaker, then return to now-playing.
+              - lambda: |-
+                  id(cast).request_select_device(lv_roller_get_selected(id(spk_roller)->obj));
+                  id(haptics).play();
+              - lvgl.page.show: now_playing
 
 # === TODO: later phases (see docs/08-esphome-port.md) ========================
 # external_components:

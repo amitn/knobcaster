@@ -1,12 +1,17 @@
 #include "cast_controller.h"
 #include "esphome/components/sh8601/sh8601.h"
+#include "esphome/components/drv2605/drv2605.h"
 
 #include "esphome/core/log.h"
 #include "freertos/task.h"
 #include "driver/usb_serial_jtag.h"
+#include "driver/pulse_cnt.h"
+#include "driver/gpio.h"
 
 #include <cstring>
 #include <cstdio>
+
+#include "board_pins.h"  // BOARD_PIN_ENC_A/_B/_BTN (components/bsp/include)
 
 // Shared Cast stack (components/cast/) — built into both targets.
 extern "C" {
@@ -25,12 +30,103 @@ struct CastCmd {
   float arg;
 };
 
+// --- Physical knob decode (ported verbatim from components/bsp/knob.c) -------
+// This board pulses the PCNT count to +/-1 per detent and returns to 0 (it does
+// NOT accumulate), so a fast poll counts ONE detent per departure from 0 (sign =
+// direction), re-arming only at 0. ESPHome's stock rotary_encoder accumulates
+// edges, so on this hardware it nets ~0 per detent and never fires — hence we
+// drive PCNT directly here. Haptics are NOT fired from the task (I2C must run on
+// the main loop); the consumer (knob_poll) clicks instead.
+//
+// NB: the knob has NO push switch on this board (GPIO0 is just the BOOT button,
+// which the knob doesn't actuate — verified: a raw-level trace never saw GPIO0 go
+// low on a knob press). Speaker selection is done by touch swipe instead, so the
+// button is intentionally not handled here.
+static pcnt_unit_handle_t s_pcnt;
+static volatile int s_enc_accum;
+
+static void knob_enc_task(void *arg) {
+  // Never delay 0 ticks (at low FREERTOS_HZ pdMS_TO_TICKS(4) can round to 0 and
+  // the task would busy-spin); clamp to >= 1 tick.
+  const TickType_t poll = pdMS_TO_TICKS(4) ? pdMS_TO_TICKS(4) : 1;
+  bool armed = true;
+  for (;;) {
+    int count = 0;
+    if (pcnt_unit_get_count(s_pcnt, &count) == ESP_OK) {
+      if (count == 0) {
+        armed = true;
+      } else if (armed) {
+        s_enc_accum += (count > 0) ? 1 : -1;  // sign = direction
+        armed = false;
+      }
+    }
+    vTaskDelay(poll);
+  }
+}
+
+void CastController::knob_setup() {
+  // PCNT unit, x4 quadrature decode (mirrors knob.c::knob_init()).
+  pcnt_unit_config_t unit_cfg = {};
+  unit_cfg.high_limit = 1000;
+  unit_cfg.low_limit = -1000;
+  if (pcnt_new_unit(&unit_cfg, &s_pcnt) != ESP_OK) {
+    ESP_LOGE(TAG, "knob: pcnt_new_unit failed");
+    return;
+  }
+  pcnt_glitch_filter_config_t filter = {};
+  filter.max_glitch_ns = 5000;
+  pcnt_unit_set_glitch_filter(s_pcnt, &filter);
+
+  pcnt_chan_config_t chan_a_cfg = {};
+  chan_a_cfg.edge_gpio_num = BOARD_PIN_ENC_A;
+  chan_a_cfg.level_gpio_num = BOARD_PIN_ENC_B;
+  pcnt_channel_handle_t chan_a = nullptr;
+  pcnt_new_channel(s_pcnt, &chan_a_cfg, &chan_a);
+  pcnt_channel_set_edge_action(chan_a, PCNT_CHANNEL_EDGE_ACTION_DECREASE,
+                               PCNT_CHANNEL_EDGE_ACTION_INCREASE);
+  pcnt_channel_set_level_action(chan_a, PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+                                PCNT_CHANNEL_LEVEL_ACTION_INVERSE);
+
+  pcnt_chan_config_t chan_b_cfg = {};
+  chan_b_cfg.edge_gpio_num = BOARD_PIN_ENC_B;
+  chan_b_cfg.level_gpio_num = BOARD_PIN_ENC_A;
+  pcnt_channel_handle_t chan_b = nullptr;
+  pcnt_new_channel(s_pcnt, &chan_b_cfg, &chan_b);
+  pcnt_channel_set_edge_action(chan_b, PCNT_CHANNEL_EDGE_ACTION_INCREASE,
+                               PCNT_CHANNEL_EDGE_ACTION_DECREASE);
+  pcnt_channel_set_level_action(chan_b, PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+                                PCNT_CHANNEL_LEVEL_ACTION_INVERSE);
+
+  // Mechanical encoder: PCNT doesn't pull up, so A/B float without these.
+  gpio_set_pull_mode((gpio_num_t) BOARD_PIN_ENC_A, GPIO_PULLUP_ONLY);
+  gpio_set_pull_mode((gpio_num_t) BOARD_PIN_ENC_B, GPIO_PULLUP_ONLY);
+
+  pcnt_unit_enable(s_pcnt);
+  pcnt_unit_clear_count(s_pcnt);
+  pcnt_unit_start(s_pcnt);
+
+  xTaskCreate(knob_enc_task, "knob", 2560, nullptr, 3, nullptr);
+  ESP_LOGCONFIG(TAG, "knob ready (encoder A=%d B=%d; no push button)",
+                BOARD_PIN_ENC_A, BOARD_PIN_ENC_B);
+}
+
+// Consume the decoded encoder detents on the main loop and act on them.
+void CastController::knob_poll() {
+  int d = s_enc_accum;
+  s_enc_accum = 0;
+  if (d != 0) {
+    this->request_step_volume(d * 3.0f);  // ~3% per detent (sign = direction)
+    if (haptics_) haptics_->play();
+  }
+}
+
 void CastController::setup() {
   lock_ = xSemaphoreCreateMutex();
   cmd_q_ = xQueueCreate(8, sizeof(CastCmd));
   ESP_LOGCONFIG(TAG, "starting Cast task (shared components/cast)");
   // Bigger stack than discovery-only: a session does TLS + JSON parsing.
   xTaskCreate(task_trampoline, "cast", 8192, this, 3, nullptr);
+  knob_setup();  // physical encoder + button
 }
 
 void CastController::task_trampoline(void *arg) {
@@ -67,6 +163,12 @@ void CastController::task_main() {
     if (sel_index_ >= n) sel_index_ = 0;
     xSemaphoreTake(lock_, portMAX_DELAY);
     snap_count_ = n;
+    // Newline-joined name list for the speaker-list roller.
+    snap_list_[0] = '\0';
+    for (int i = 0; i < n; i++) {
+      if (i) strlcat(snap_list_, "\n", sizeof(snap_list_));
+      strlcat(snap_list_, scan[i].friendly_name, sizeof(snap_list_));
+    }
     xSemaphoreGive(lock_);
 
     if (n > 0 && !sess) {
@@ -77,6 +179,8 @@ void CastController::task_main() {
         std::strncpy(snap_device_, scan[sel_index_].friendly_name, sizeof(snap_device_) - 1);
         snap_device_[sizeof(snap_device_) - 1] = '\0';
         snap_now_[0] = '\0';  // clear stale now-playing while the new one loads
+        snap_art_[0] = '\0';  // clear stale album art too (UI hides it until new art lands)
+        snap_index_ = sel_index_;
         xSemaphoreGive(lock_);
       }
     }
@@ -85,12 +189,15 @@ void CastController::task_main() {
     for (int i = 0; i < 60 && sess; i++) {
       CastCmd c;
       int dev_delta = 0;
+      int dev_target = -1;  // absolute select (overrides delta)
       while (xQueueReceive(cmd_q_, &c, 0) == pdTRUE) {
         if (c.kind == CMD_NEXT_DEVICE) dev_delta = (c.arg < 0) ? -1 : 1;
+        else if (c.kind == CMD_SELECT_DEVICE) dev_target = (int) c.arg;
         else apply_cmd(sess, c);
       }
-      if (dev_delta != 0 && n > 0) {  // switch speaker -> reopen the new one now
-        sel_index_ = (sel_index_ + dev_delta + n) % n;
+      if ((dev_delta != 0 || dev_target >= 0) && n > 0) {  // switch speaker -> reopen now
+        if (dev_target >= 0) sel_index_ = dev_target % n;
+        else sel_index_ = (sel_index_ + dev_delta + n) % n;
         cast_session_close(sess);
         sess = cast_session_open(&scan[sel_index_]);  // snappy: no rescan
         if (sess) {
@@ -99,6 +206,8 @@ void CastController::task_main() {
           std::strncpy(snap_device_, scan[sel_index_].friendly_name, sizeof(snap_device_) - 1);
           snap_device_[sizeof(snap_device_) - 1] = '\0';
           snap_now_[0] = '\0';
+          snap_art_[0] = '\0';  // clear stale album art on speaker change
+          snap_index_ = sel_index_;
           xSemaphoreGive(lock_);
         }
         continue;
@@ -137,7 +246,30 @@ void CastController::request_play_pause() { enqueue(CMD_PLAYPAUSE, 0); }
 void CastController::request_next() { enqueue(CMD_NEXT, 0); }
 void CastController::request_next_device() { enqueue(CMD_NEXT_DEVICE, +1); }
 void CastController::request_prev_device() { enqueue(CMD_NEXT_DEVICE, -1); }
+void CastController::request_select_device(int index) { enqueue(CMD_SELECT_DEVICE, (float) index); }
 void CastController::request_prev() { enqueue(CMD_PREV, 0); }
+
+std::string CastController::device_list_str() {
+  xSemaphoreTake(lock_, portMAX_DELAY);
+  std::string s(snap_list_);
+  xSemaphoreGive(lock_);
+  if (s.empty()) s = "(no speakers)";
+  return s;
+}
+
+int CastController::device_count() {
+  xSemaphoreTake(lock_, portMAX_DELAY);
+  int n = snap_count_;
+  xSemaphoreGive(lock_);
+  return n < 0 ? 0 : n;
+}
+
+int CastController::current_index() {
+  xSemaphoreTake(lock_, portMAX_DELAY);
+  int i = snap_index_;
+  xSemaphoreGive(lock_);
+  return i;
+}
 
 void CastController::loop() {
   // Serial debug console: emulate user interactions from the host (scripts/
@@ -156,6 +288,8 @@ void CastController::loop() {
       default: break;
     }
   }
+
+  this->knob_poll();  // physical encoder + button (decoded by knob task/ISR)
 
   // Snapshot under lock, then publish (publish_state must run on this thread).
   int count, volume;
