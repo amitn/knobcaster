@@ -32,3 +32,4 @@ refs/
 # Screenshot artifacts from `just shot` / `just uitest`
 screen*.png
 uitest_shots/
+esphome_uitest_shots/

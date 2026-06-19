@@ -9,6 +9,9 @@
 #include "freertos/queue.h"
 
 namespace esphome {
+namespace sh8601 {
+class SH8601;
+}
 namespace cast_controller {
 
 // Transport command kinds (HA/UI -> session task, via cmd_q_).
@@ -39,6 +42,7 @@ class CastController : public Component {
   void set_current_device_sensor(text_sensor::TextSensor *s) { current_device_ = s; }
   void set_art_url_sensor(text_sensor::TextSensor *s) { art_url_ = s; }
   void set_volume_sensor(sensor::Sensor *s) { volume_ = s; }
+  void set_display(sh8601::SH8601 *d) { display_ = d; }  // for the 'S' screenshot key
 
   // Control entry points (call from ESPHome lambdas/main loop). They enqueue a
   // command for the session task to apply — the session is single-threaded.
@@ -64,6 +68,7 @@ class CastController : public Component {
 
   QueueHandle_t cmd_q_{nullptr};   // HA/UI commands -> session task
   int sel_index_{0};               // active device index (task-owned)
+  sh8601::SH8601 *display_{nullptr};
 
   // Shared snapshot: task writes under lock_, loop() reads.
   SemaphoreHandle_t lock_{nullptr};

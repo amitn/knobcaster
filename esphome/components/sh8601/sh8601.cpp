@@ -81,13 +81,6 @@ void SH8601::setup() {
   ESP_LOGCONFIG(TAG, "SH8601 %dx%d ready (screenshot=%s)", width_, height_, fb_ ? "on" : "off");
 }
 
-void SH8601::loop() {
-  // 'S' on the serial console -> dump the framebuffer (matches `just shot`).
-  uint8_t c;
-  if (usb_serial_jtag_read_bytes(&c, 1, 0) == 1 && (c == 'S' || c == 's'))
-    this->dump_screen();
-}
-
 void SH8601::dump_screen() {
   if (fb_ == nullptr) return;
   // Silence the (shared) console logger during the dump — otherwise its text

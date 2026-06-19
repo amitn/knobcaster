@@ -34,6 +34,7 @@ external_components:
 
 cast_controller:
   id: cast
+  display: knob_lcd   # for the 'S' screenshot key (serial debug console)
   devices_found:
     name: "Cast devices found"
   now_playing:
@@ -256,9 +257,9 @@ lvgl:
             max_value: 100
             value: 0
             adjustable: false
-            arc_color: 0x0A84FF
+            arc_color: 0x303030       # dim background ring
             indicator:
-              arc_color: 0x0A84FF
+              arc_color: 0x0A84FF     # filled portion = volume level
         # Active speaker (top).
         - label:
             id: ui_device

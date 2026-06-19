@@ -122,7 +122,7 @@ esphome-build:
 esphome-run:
     uvx esphome run esphome/knob.yaml
 
-# Re-port the SH8601 init sequence from components/bsp/display.c into knob.yaml
-# (display.c stays the single source of truth for the panel init).
-esphome-gen-init:
-    uv run python scripts/gen_esphome_init.py
+
+# ESPHome UI smoke test: drive interactions over serial, screenshot + validate.
+esphome-uitest:
+    uv run python scripts/esphome_uitest.py

@@ -1,7 +1,9 @@
 #include "cast_controller.h"
+#include "esphome/components/sh8601/sh8601.h"
 
 #include "esphome/core/log.h"
 #include "freertos/task.h"
+#include "driver/usb_serial_jtag.h"
 
 #include <cstring>
 #include <cstdio>
@@ -138,6 +140,23 @@ void CastController::request_prev_device() { enqueue(CMD_NEXT_DEVICE, -1); }
 void CastController::request_prev() { enqueue(CMD_PREV, 0); }
 
 void CastController::loop() {
+  // Serial debug console: emulate user interactions from the host (scripts/
+  // esphome_uitest.py). Single reader so keys aren't split between components.
+  uint8_t key;
+  if (usb_serial_jtag_read_bytes(&key, 1, 0) == 1) {
+    switch (key) {
+      case 'S': case 's': if (display_) display_->dump_screen(); break;
+      case '+': case '=': this->request_step_volume(+5); break;   // knob CW
+      case '-': case '_': this->request_step_volume(-5); break;   // knob CCW
+      case 'p': case 'P': this->request_next_device(); break;     // knob press: next speaker
+      case 'k': case ' ': this->request_play_pause(); break;
+      case 'n': this->request_next(); break;
+      case 'b': this->request_prev(); break;
+      case 'm': this->request_mute(); break;
+      default: break;
+    }
+  }
+
   // Snapshot under lock, then publish (publish_state must run on this thread).
   int count, volume;
   char now[sizeof(snap_now_)], device[sizeof(snap_device_)], art[sizeof(snap_art_)];

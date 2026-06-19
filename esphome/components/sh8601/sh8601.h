@@ -15,7 +15,6 @@ namespace sh8601 {
 class SH8601 : public display::Display {
  public:
   void setup() override;
-  void loop() override;      // polls the serial console for the 'S' screenshot key
   void update() override {}  // LVGL drives draws; nothing periodic
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::HARDWARE; }
