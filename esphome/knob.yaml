@@ -115,6 +115,11 @@ i2c:
   scl: 12
   frequency: 400kHz
 
+# DRV2605 haptics (I2C 0x5A) — a click per encoder detent (effect 24, as tuned
+# on hardware for the vanilla build).
+drv2605:
+  id: haptics
+
 spi:
   - id: qspi_bus
     type: quad           # SH8601 is a 4-data-line QSPI AMOLED
@@ -357,9 +362,9 @@ sensor:
     # per detent and returns to 0; detent counting needs on-hardware validation
     # (the IDF build has anti-glitch decode in bsp/knob.c).
     on_clockwise:
-      - lambda: "id(cast).request_step_volume(+3);"
+      - lambda: "id(cast).request_step_volume(+3); id(haptics).play();"
     on_anticlockwise:
-      - lambda: "id(cast).request_step_volume(-3);"
+      - lambda: "id(cast).request_step_volume(-3); id(haptics).play();"
 
 binary_sensor:
   - platform: gpio
