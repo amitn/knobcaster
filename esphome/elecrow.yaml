@@ -6,12 +6,13 @@
 # docs/08-esphome-port.md.
 #
 # STATUS: compile- + `esphome config`-validated only; NOT yet hardware-validated.
-# Pins/timings are from the Elecrow wiki + Elecrow's official ESPHome example.
+# The display driver (st7701s), pins/timings, PSRAM/flash sdkconfig, and the
+# power-up sequence all mirror Elecrow's OFFICIAL ESPHome example, so the board
+# bring-up should be solid; the Cast UI layered on top is what's unproven.
 # On-hardware bring-up TODOs (tune once you have the board):
-#   * RGB porch/pclk timings + pclk_inverted (panel-specific).
-#   * LCD-reset / touch-reset polarity (active-low assumed; flip `inverted` if blank).
 #   * encoder direction sign (swap on_clockwise/on_anticlockwise if inverted).
 #   * LVGL buffer_size vs. tearing.
+#   * color_order / invert_colors if colors look wrong.
 #
 # Build:  esphome run esphome/elecrow.yaml   (or `just esphome-elecrow-run`)
 
@@ -19,16 +20,46 @@ esphome:
   name: cast-knob-elecrow
   friendly_name: Cast Knob (Elecrow)
   platformio_options:
-    # LVGL bidirectional text so RTL Hebrew song titles render correctly (mirrors
-    # knob.yaml). ESPHome folds build_flags into lv_conf.h.
     build_flags:
+      # LVGL bidirectional text so RTL Hebrew song titles render correctly.
       - "-DLV_USE_BIDI=1"
+      - "-DBOARD_HAS_PSRAM"
+    # QIO flash + OPI (octal) PSRAM — the combo for the ESP32-S3R8 on this board.
+    # Required for the RGB-panel framebuffer to live in PSRAM reliably. From
+    # Elecrow's official ESPHome example.
+    board_build.esp-idf.memory_type: qio_opi
+    board_build.flash_mode: dio
+  # Display + touch power-up handshake via the PCF8574, mirroring Elecrow's
+  # known-good sequence: power the LCD, pulse display reset, double-pulse touch
+  # reset, then release the touch INT line. The st7701s/cst816 drivers therefore
+  # carry NO reset_pin (reset is owned here).
+  on_boot:
+    priority: 800
+    then:
+      - output.turn_on: lcd_power
+      - output.turn_on: display_reset
+      - delay: 100ms
+      - output.turn_off: display_reset
+      - delay: 100ms
+      - output.turn_on: tp_reset
+      - delay: 100ms
+      - output.turn_off: tp_reset
+      - delay: 120ms
+      - output.turn_on: tp_reset
+      - delay: 120ms
+      - output.turn_on: tp_intr
 
 esp32:
   board: esp32-s3-devkitc-1   # ESP32-S3, 16MB flash / 8MB OPI PSRAM
   flash_size: 16MB
   framework:
     type: esp-idf
+    # PSRAM performance/stability for the RGB panel (Elecrow official example).
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
+      CONFIG_ESP32S3_DATA_CACHE_64KB: y
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
+      CONFIG_SPIRAM_RODATA: y
 
 psram:
   mode: octal        # ESP32-S3R8 OPI PSRAM
@@ -164,12 +195,7 @@ display:
     spi_mode: MODE3
     data_rate: 2MHz
     cs_pin: 16
-    # LCD reset on the expander (active-low; driver pulses it during setup).
-    reset_pin:
-      pcf8574: pcf
-      number: 4
-      mode:
-        output: true
+    # No reset_pin: LCD reset (PCF8574 P4) is pulsed in the on_boot sequence.
     de_pin: 40
     hsync_pin: 15
     vsync_pin: 7
@@ -192,21 +218,23 @@ display:
       width: 480
       height: 480
 
-# LCD power rail (expander P3) — hold it on. Pins idle high anyway; this makes it
-# explicit and survives any expander re-init.
-switch:
+# PCF8574-backed control lines (toggled by the on_boot sequence) + the backlight.
+# Names/pins/polarity match Elecrow's official ESPHome example:
+#   P3 lcd_power, P4 display_reset (active-low -> inverted), P0 tp_reset, P2 tp_intr.
+output:
   - platform: gpio
     id: lcd_power
-    internal: true
-    restore_mode: ALWAYS_ON
-    pin:
-      pcf8574: pcf
-      number: 3
-      mode:
-        output: true
-
-# Backlight (GPIO6, active-high). LEDC so we can dim/blank for sleep.
-output:
+    pin: { pcf8574: pcf, number: 3, mode: { output: true }, inverted: false }
+  - platform: gpio
+    id: display_reset
+    pin: { pcf8574: pcf, number: 4, mode: { output: true }, inverted: true }
+  - platform: gpio
+    id: tp_reset
+    pin: { pcf8574: pcf, number: 0, mode: { output: true } }
+  - platform: gpio
+    id: tp_intr
+    pin: { pcf8574: pcf, number: 2, mode: { output: true } }
+  # Backlight (GPIO6, active-high). LEDC so we can dim/blank for sleep.
   - platform: ledc
     pin: 6
     id: backlight_pwm
@@ -224,13 +252,8 @@ touchscreen:
   - platform: cst816
     id: knob_touch
     address: 0x15
-    skip_probe: true            # reset is late (on the expander); don't probe at boot
-    update_interval: 50ms
-    reset_pin:
-      pcf8574: pcf
-      number: 0
-      mode:
-        output: true
+    skip_probe: true            # reset/INT live on the expander (toggled in on_boot)
+    update_interval: 25ms       # matches Elecrow's official example
     on_touch:
       - if:
           condition:
