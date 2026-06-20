@@ -6,7 +6,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, esphome-port, elecrow-port]
   pull_request:
   workflow_dispatch:
 
@@ -96,8 +96,49 @@ jobs:
       # Validate + compile the ESPHome target. This is the gate that keeps the
       # two-target reuse honest: it builds components/cast/ into the ESPHome
       # firmware, so a change there that breaks the ESPHome build fails CI.
-      - name: Validate ESPHome config
-        run: just esphome-config
+      - name: Validate ESPHome config (both boards)
+        run: |
+          just esphome-config
+          just esphome-elecrow-config
 
       - name: Compile ESPHome firmware
         run: just esphome-build
+
+  # Build all three firmwares and publish the web-flashable factory images as a
+  # downloadable workflow artifact (grab them from the run's "Artifacts" section —
+  # signed-in GitHub users only; for anonymous downloads, cut a Release instead).
+  firmware:
+    name: Firmware artifacts (all 3 builds)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv (+ cache the venv / esphome downloads)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Cache PlatformIO platforms & toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'boards/**', 'sdkconfig.defaults', 'src/idf_component.yml', 'esphome/**.yaml', 'components/cast/**') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Sync toolchain (PlatformIO + esptool in the uv venv)
+        run: just setup
+
+      - name: Build all firmwares (vanilla + both ESPHome)
+        run: just dist-all "ci-${{ github.ref_name }}"
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.run_number }}
+          path: dist/*
+          retention-days: 30
