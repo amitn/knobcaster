@@ -126,6 +126,21 @@ esphome-build:
 esphome-run:
     uvx esphome run esphome/knob.yaml
 
+# --- ESPHome: ELECROW CrowPanel 2.1" Rotary Display (480x480) ----------------
+# Second board target; shares components/cast/ + cast_controller with knob.yaml.
+
+# Validate the Elecrow YAML (fast; no toolchain download).
+esphome-elecrow-config:
+    uvx esphome config esphome/elecrow.yaml
+
+# Compile the Elecrow firmware (slow first time — downloads the ESP-IDF toolchain).
+esphome-elecrow-build:
+    uvx esphome compile esphome/elecrow.yaml
+
+# Build + flash + log over USB (needs the Elecrow board on this machine).
+esphome-elecrow-run:
+    uvx esphome run esphome/elecrow.yaml
+
 
 # ESPHome UI smoke test: drive interactions over serial, screenshot + validate.
 esphome-uitest:

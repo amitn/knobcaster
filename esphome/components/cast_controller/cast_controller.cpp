@@ -1,11 +1,14 @@
 #include "cast_controller.h"
+#ifdef CAST_HAVE_SH8601
 #include "esphome/components/sh8601/sh8601.h"
+#endif
+#ifdef CAST_HAVE_HAPTICS
 #include "esphome/components/drv2605/drv2605.h"
+#endif
 
 #include "esphome/core/log.h"
 #include "freertos/task.h"
 #include "driver/usb_serial_jtag.h"
-#include "driver/pulse_cnt.h"
 #include "driver/gpio.h"
 
 #include <cstring>
@@ -13,7 +16,10 @@
 #include <strings.h>   // strcasecmp
 #include <algorithm>   // std::sort
 
+#ifdef CAST_HAVE_PCNT_ENCODER
+#include "driver/pulse_cnt.h"
 #include "board_pins.h"  // BOARD_PIN_ENC_A/_B/_BTN (components/bsp/include)
+#endif
 
 // Shared Cast stack (components/cast/) — built into both targets.
 extern "C" {
@@ -44,6 +50,7 @@ struct CastCmd {
 // which the knob doesn't actuate — verified: a raw-level trace never saw GPIO0 go
 // low on a knob press). Speaker selection is done by touch swipe instead, so the
 // button is intentionally not handled here.
+#ifdef CAST_HAVE_PCNT_ENCODER
 static pcnt_unit_handle_t s_pcnt;
 static volatile int s_enc_accum;
 
@@ -116,10 +123,19 @@ void CastController::knob_setup() {
 void CastController::knob_poll() {
   int d = s_enc_accum;
   s_enc_accum = 0;
+  this->on_encoder_delta(d);
+}
+#endif  // CAST_HAVE_PCNT_ENCODER
+
+// Apply one encoder detent (sign = direction). Shared by the internal PCNT poll
+// (Waveshare) and the YAML's stock rotary_encoder trigger (Elecrow board).
+void CastController::on_encoder_delta(int d) {
   if (d == 0) return;
   enc_activity_ = true;                   // for screen-sleep wake / idle reset
   if (asleep_) return;                    // swallow the waking turn (no volume change)
+#ifdef CAST_HAVE_HAPTICS
   if (haptics_) haptics_->play();         // click on every detent
+#endif
   if (list_mode_)
     list_scroll_ += d;                    // list page: buffer for the roller
   else
@@ -132,7 +148,10 @@ void CastController::setup() {
   ESP_LOGCONFIG(TAG, "starting Cast task (shared components/cast)");
   // Bigger stack than discovery-only: a session does TLS + JSON parsing.
   xTaskCreate(task_trampoline, "cast", 8192, this, 3, nullptr);
-  knob_setup();  // physical encoder + button
+#ifdef CAST_HAVE_PCNT_ENCODER
+  knob_setup();  // physical encoder (PCNT). Boards with a normal quadrature
+                 // encoder feed detents via on_encoder_delta() from the YAML.
+#endif
 }
 
 void CastController::task_trampoline(void *arg) {
@@ -298,7 +317,9 @@ void CastController::loop() {
   uint8_t key;
   if (usb_serial_jtag_read_bytes(&key, 1, 0) == 1) {
     switch (key) {
+#ifdef CAST_HAVE_SH8601
       case 'S': case 's': if (display_) display_->dump_screen(); break;
+#endif
       case '+': case '=': this->request_step_volume(+5); break;   // knob CW
       case '-': case '_': this->request_step_volume(-5); break;   // knob CCW
       case 'p': case 'P': this->request_next_device(); break;     // knob press: next speaker
@@ -310,7 +331,9 @@ void CastController::loop() {
     }
   }
 
-  this->knob_poll();  // physical encoder + button (decoded by knob task/ISR)
+#ifdef CAST_HAVE_PCNT_ENCODER
+  this->knob_poll();  // physical encoder (decoded by the PCNT poll task)
+#endif
 
   // Snapshot under lock, then publish (publish_state must run on this thread).
   int count, volume;

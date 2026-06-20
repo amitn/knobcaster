@@ -89,6 +89,24 @@ vanilla build); nothing is **runtime-validated** yet — that needs the board.
 5. ⏳ **Polish** — device selection, warm session pool, optimistic UI, sleep — best
    driven by on-device behaviour.
 
+## Second board: ELECROW CrowPanel 2.1" Rotary Display (480×480)
+
+`esphome/elecrow.yaml` re-targets the same `cast_controller` (and the shared
+`components/cast/` core) to a **second board** — proving the wrapper isn't
+Waveshare-specific. The board-specific peripherals became **compile-optional**:
+`cast_controller/__init__.py` emits a `-DCAST_HAVE_{SH8601,HAPTICS,PCNT_ENCODER}`
+flag only when the matching YAML key is present, and `cast_controller.{h,cpp}`
+guard the SH8601 screenshot, DRV2605 haptics, and internal PCNT encoder behind
+those defines. The Waveshare build sets all three → byte-for-byte unchanged.
+
+Hardware deltas the Elecrow YAML handles: ST7701S **RGB-parallel** panel (built-in
+`st7701s`, not the QSPI `sh8601`), a **PCF8574** I/O expander @0x21 (touch RST/INT,
+LCD power/reset, knob button), a **standard quadrature** encoder fed in via the new
+shared `CastController::on_encoder_delta()` (the `encoder: external` mode), a real
+**push button** (open/select speaker — the Waveshare lacks one), no haptics, and
+backlight on GPIO6. Status: compile + `esphome config` validated; **not yet
+hardware-validated** (no board on hand) — bring-up TODOs are in the YAML header.
+
 ## Recommendation
 
 Keep the ESP-IDF firmware on `main` as the reference/working build. Pursue this port

@@ -48,8 +48,12 @@ class CastController : public Component {
   void set_current_device_sensor(text_sensor::TextSensor *s) { current_device_ = s; }
   void set_art_url_sensor(text_sensor::TextSensor *s) { art_url_ = s; }
   void set_volume_sensor(sensor::Sensor *s) { volume_ = s; }
+#ifdef CAST_HAVE_SH8601
   void set_display(sh8601::SH8601 *d) { display_ = d; }  // for the 'S' screenshot key
+#endif
+#ifdef CAST_HAVE_HAPTICS
   void set_haptics(drv2605::DRV2605 *h) { haptics_ = h; }  // click per physical detent/press
+#endif
 
   // Control entry points (call from ESPHome lambdas/main loop). They enqueue a
   // command for the session task to apply — the session is single-threaded.
@@ -74,7 +78,15 @@ class CastController : public Component {
   // buffers the scroll; an LVGL interval in the YAML applies take_list_scroll()
   // to the roller.
   void set_list_mode(bool on) { list_mode_ = on; list_scroll_ = 0; }
+  bool is_list_mode() const { return list_mode_; }
   int take_list_scroll() { int s = list_scroll_; list_scroll_ = 0; return s; }
+
+  // Apply one encoder detent (sign = direction). The single source of truth for
+  // "what a knob detent does": registers activity (wake/idle), swallows the
+  // waking turn while asleep, and either scrolls the speaker list or steps the
+  // volume. Called by the internal PCNT poll (Waveshare) AND by the YAML's stock
+  // rotary_encoder trigger (Elecrow board, encoder: external).
+  void on_encoder_delta(int d);
 
   // Screen-sleep helpers. The encoder lives outside LVGL, so the YAML resets
   // LVGL's inactivity (and wakes) when the knob moves; while asleep the detent is
@@ -93,8 +105,10 @@ class CastController : public Component {
   // and returns to 0 — ESPHome's stock rotary_encoder can't decode that). State
   // is updated by a poll task + ISR (file-scope statics in the .cpp) and consumed
   // on the main loop, where request_*/haptics can run safely.
+#ifdef CAST_HAVE_PCNT_ENCODER
   void knob_setup();
   void knob_poll();   // consume decoded detents/presses (call from loop())
+#endif
 
   sensor::Sensor *devices_found_{nullptr};
   text_sensor::TextSensor *now_playing_{nullptr};
@@ -104,8 +118,12 @@ class CastController : public Component {
 
   QueueHandle_t cmd_q_{nullptr};   // HA/UI commands -> session task
   int sel_index_{0};               // active device index (task-owned)
+#ifdef CAST_HAVE_SH8601
   sh8601::SH8601 *display_{nullptr};
+#endif
+#ifdef CAST_HAVE_HAPTICS
   drv2605::DRV2605 *haptics_{nullptr};
+#endif
   bool list_mode_{false};   // encoder scrolls the speaker list instead of volume
   int list_scroll_{0};      // buffered detents while in list mode
   bool asleep_{false};      // screen is in sleep (panel + backlight off)

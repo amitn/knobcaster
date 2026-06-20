@@ -1,0 +1,581 @@
+# ESPHome config for the ELECROW CrowPanel 2.1" ESP32 Rotary Display (480x480).
+#
+# A SECOND board target for this project (the first is the Waveshare
+# ESP32-S3-Knob-Touch-LCD-1.8, esphome/knob.yaml). Both share the SAME
+# components/cast/ stack via the cast_controller external component — see
+# docs/08-esphome-port.md.
+#
+# STATUS: compile- + `esphome config`-validated only; NOT yet hardware-validated.
+# Pins/timings are from the Elecrow wiki + Elecrow's official ESPHome example.
+# On-hardware bring-up TODOs (tune once you have the board):
+#   * RGB porch/pclk timings + pclk_inverted (panel-specific).
+#   * LCD-reset / touch-reset polarity (active-low assumed; flip `inverted` if blank).
+#   * encoder direction sign (swap on_clockwise/on_anticlockwise if inverted).
+#   * LVGL buffer_size vs. tearing.
+#
+# Build:  esphome run esphome/elecrow.yaml   (or `just esphome-elecrow-run`)
+
+esphome:
+  name: cast-knob-elecrow
+  friendly_name: Cast Knob (Elecrow)
+  platformio_options:
+    # LVGL bidirectional text so RTL Hebrew song titles render correctly (mirrors
+    # knob.yaml). ESPHome folds build_flags into lv_conf.h.
+    build_flags:
+      - "-DLV_USE_BIDI=1"
+
+esp32:
+  board: esp32-s3-devkitc-1   # ESP32-S3, 16MB flash / 8MB OPI PSRAM
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal        # ESP32-S3R8 OPI PSRAM
+  speed: 80MHz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+# Shared Cast stack (components/cast/) pulled in by cast_controller — identical
+# source to the Waveshare target and the vanilla IDF firmware.
+external_components:
+  - source:
+      type: local
+      path: components
+
+cast_controller:
+  id: cast
+  # This board has a STANDARD quadrature encoder (not the Waveshare's PCNT
+  # special case), so detents come from ESPHome's stock rotary_encoder via
+  # on_encoder_delta() — disable the internal PCNT decoder.
+  encoder: external
+  # No SH8601 (RGB panel, no fbdump screenshot) and no DRV2605 haptics on this
+  # board, so those keys are omitted (cast_controller compiles them out).
+  devices_found:
+    name: "Cast devices found"
+  now_playing:
+    name: "Now playing"
+    on_value:
+      - lvgl.label.update:
+          id: ui_title
+          text: !lambda "return x.c_str();"
+  current_device:
+    name: "Current device"
+    on_value:
+      - lvgl.label.update:
+          id: ui_device
+          text: !lambda "return x.c_str();"
+      - lvgl.widget.hide: ui_art
+      - lambda: |-
+          static const uint32_t palette[] = {
+            0x0A84FF, 0xFF375F, 0x30D158, 0xFF9F0A, 0xBF5AF2, 0x64D2FF, 0xFFD60A, 0xFF6B22};
+          int idx = id(cast).current_index();
+          lv_color_t c = lv_color_hex(palette[idx % 8]);
+          lv_obj_set_style_arc_color(id(ui_vol_arc), c, LV_PART_INDICATOR);
+  art_url:
+    id: cast_art_url
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x.length() > 0) { id(art_img).set_url(x.c_str()); id(art_img).update(); }
+          else { lv_obj_add_flag(id(ui_art), LV_OBJ_FLAG_HIDDEN); }
+  volume:
+    name: "Cast volume"
+    on_value:
+      - lvgl.arc.update:
+          id: ui_vol_arc
+          value: !lambda "return (int) x;"
+
+# HA-controllable entities -> cast_controller command queue.
+number:
+  - platform: template
+    name: "Cast volume set"
+    min_value: 0
+    max_value: 100
+    step: 1
+    optimistic: true
+    set_action:
+      - lambda: "id(cast).request_set_volume(x);"
+
+button:
+  - platform: template
+    name: "Play Pause"
+    on_press:
+      - lambda: "id(cast).request_play_pause();"
+  - platform: template
+    name: "Next track"
+    on_press:
+      - lambda: "id(cast).request_next();"
+  - platform: template
+    name: "Previous track"
+    on_press:
+      - lambda: "id(cast).request_prev();"
+  - platform: template
+    name: "Mute toggle"
+    on_press:
+      - lambda: "id(cast).request_mute();"
+
+# --- Connectivity ------------------------------------------------------------
+wifi:
+  ap:
+    ssid: "CastKnob-Setup"
+  on_connect:
+    - lvgl.page.show: now_playing
+  on_disconnect:
+    - lvgl.page.show: wifi_setup
+
+captive_portal:
+
+improv_serial:
+
+ota:
+  - platform: esphome
+
+# --- Buses -------------------------------------------------------------------
+# I2C carries the CST816 touch (0x15) and the PCF8574 I/O expander (0x21).
+i2c:
+  sda: 38
+  scl: 39
+  frequency: 400kHz
+
+# PCF8574 I/O expander @0x21:
+#   P0 touch reset, P2 touch INT (unused by ESPHome — touch polls), P3 LCD power,
+#   P4 LCD reset, P5 knob push button. Expander pins idle HIGH at power-up, so the
+#   panel powers up before the display driver runs.
+pcf8574:
+  - id: pcf
+    address: 0x21
+
+# SPI bus used ONLY to send the ST7701S init sequence (the pixel data goes over
+# the parallel RGB bus). clk=2, mosi=1.
+spi:
+  clk_pin: 2
+  mosi_pin: 1
+
+# --- Display (ST7701S over 16-bit RGB parallel, 480x480) ---------------------
+# ESPHome's built-in st7701s RGB driver. The custom sh8601 component (knob.yaml)
+# is NOT used here — different panel + interface entirely.
+display:
+  - platform: st7701s
+    id: knob_lcd
+    update_interval: never     # LVGL drives the flushes
+    auto_clear_enabled: false
+    spi_mode: MODE3
+    data_rate: 2MHz
+    cs_pin: 16
+    # LCD reset on the expander (active-low; driver pulses it during setup).
+    reset_pin:
+      pcf8574: pcf
+      number: 4
+      mode:
+        output: true
+    de_pin: 40
+    hsync_pin: 15
+    vsync_pin: 7
+    pclk_pin: 41
+    pclk_frequency: 18MHz
+    pclk_inverted: true
+    color_order: RGB
+    invert_colors: false
+    data_pins:
+      red: [46, 3, 8, 18, 17]
+      green: [14, 13, 12, 11, 10, 9]
+      blue: [5, 45, 48, 47, 21]
+    hsync_front_porch: 20
+    hsync_pulse_width: 10
+    hsync_back_porch: 10
+    vsync_front_porch: 8
+    vsync_pulse_width: 10
+    vsync_back_porch: 10
+    dimensions:
+      width: 480
+      height: 480
+
+# LCD power rail (expander P3) — hold it on. Pins idle high anyway; this makes it
+# explicit and survives any expander re-init.
+switch:
+  - platform: gpio
+    id: lcd_power
+    internal: true
+    restore_mode: ALWAYS_ON
+    pin:
+      pcf8574: pcf
+      number: 3
+      mode:
+        output: true
+
+# Backlight (GPIO6, active-high). LEDC so we can dim/blank for sleep.
+output:
+  - platform: ledc
+    pin: 6
+    id: backlight_pwm
+    frequency: 19531Hz
+light:
+  - platform: monochromatic
+    output: backlight_pwm
+    id: backlight
+    restore_mode: ALWAYS_ON
+
+# --- Touch (CST816) ----------------------------------------------------------
+# INT is behind the expander (P2), so ESPHome can't use it as a hardware
+# interrupt — the touch polls (update_interval). Reset is on expander P0.
+touchscreen:
+  - platform: cst816
+    id: knob_touch
+    address: 0x15
+    skip_probe: true            # reset is late (on the expander); don't probe at boot
+    update_interval: 50ms
+    reset_pin:
+      pcf8574: pcf
+      number: 0
+      mode:
+        output: true
+    on_touch:
+      - if:
+          condition:
+            lambda: "return id(cast).is_asleep();"
+          then:
+            - script.execute: screen_wake
+
+# --- Rotary encoder + push button --------------------------------------------
+# Standard quadrature encoder (A=42, B=4) — ESPHome's stock decoder works here
+# (unlike the Waveshare PCNT special case). Each detent feeds on_encoder_delta(),
+# the shared "what a detent does" logic in cast_controller.
+sensor:
+  - platform: rotary_encoder
+    id: knob_enc
+    internal: true
+    pin_a:
+      number: 42
+      mode:
+        input: true
+        pullup: true
+    pin_b:
+      number: 4
+      mode:
+        input: true
+        pullup: true
+    on_clockwise:
+      - lambda: "id(cast).on_encoder_delta(+1);"
+    on_anticlockwise:
+      - lambda: "id(cast).on_encoder_delta(-1);"
+
+# Knob push button (expander P5, active-low). Polled over I2C (no ESP interrupt
+# line). Short press: open the speaker list; press again on the list to select
+# the centered speaker (mirrors the IDF build's knob-press = pick-speaker UX —
+# the Waveshare board has no push switch, so it uses touch swipes instead).
+binary_sensor:
+  - platform: gpio
+    id: knob_btn
+    internal: true
+    pin:
+      pcf8574: pcf
+      number: 5
+      mode:
+        input: true
+      inverted: true
+    on_click:
+      - if:
+          condition:
+            lambda: "return id(cast).is_list_mode();"
+          then:
+            - lambda: |-
+                id(cast).request_select_device(lv_roller_get_selected(id(spk_roller)->obj));
+                id(cast).set_list_mode(false);
+            - lvgl.page.show: now_playing
+          else:
+            - lambda: |-
+                lv_obj_t *r = id(spk_roller)->obj;
+                lv_roller_set_options(r, id(cast).device_list_str().c_str(), LV_ROLLER_MODE_NORMAL);
+                lv_roller_set_selected(r, id(cast).current_index(), LV_ANIM_OFF);
+                id(cast).set_list_mode(true);
+            - lvgl.page.show: speaker_list
+
+# Album art: HTTP fetch + JPEG decode (mirrors components/albumart). Resized to
+# the 480x480 panel.
+http_request:
+  verify_ssl: false
+online_image:
+  - id: art_img
+    url: "https://www.gstatic.com/images/branding/product/2x/cast_64dp.png"
+    format: JPEG
+    type: RGB565
+    resize: 480x480
+    update_interval: never
+    on_download_finished:
+      - lvgl.image.update:
+          id: ui_art
+          src: art_img
+      - lvgl.widget.show: ui_art
+    on_error:
+      - logger.log:
+          format: "album art fetch/decode failed"
+          level: WARN
+
+# Screen sleep: blank the backlight after idle, wake on touch or knob. The RGB
+# panel has no panel-sleep command (unlike the SH8601), so backlight off is the
+# sleep. set_asleep() still gates the waking turn so a wake-twist doesn't also
+# change volume.
+script:
+  - id: screen_sleep
+    then:
+      - logger.log: "screen sleep"
+      - lambda: "id(cast).set_asleep(true);"
+      - light.turn_off: backlight
+  - id: screen_wake
+    then:
+      - logger.log: "screen wake"
+      - lambda: |-
+          id(cast).set_asleep(false);
+          lv_display_trigger_activity(NULL);   // reset LVGL idle so it can re-arm
+      - light.turn_on: backlight
+
+# Per-tick housekeeping (same as knob.yaml): the encoder lives outside LVGL, so
+# feed its activity to LVGL idle / wake, and apply buffered list-scroll detents
+# to the speaker roller while the list page is open.
+interval:
+  - interval: 80ms
+    then:
+      - lambda: |-
+          if (id(cast).take_encoder_activity()) {
+            if (id(cast).is_asleep()) id(screen_wake)->execute();
+            else lv_display_trigger_activity(NULL);
+          }
+          int d = id(cast).take_list_scroll();
+          if (d != 0) {
+            lv_obj_t *r = id(spk_roller)->obj;
+            int n = (int) lv_roller_get_option_count(r);
+            if (n > 0) {
+              int ni = (int) lv_roller_get_selected(r) + d;
+              int wrapped = ((ni % n) + n) % n;
+              lv_roller_set_selected(r, wrapped, wrapped == ni ? LV_ANIM_ON : LV_ANIM_OFF);
+            }
+          }
+
+# --- Fonts -------------------------------------------------------------------
+# Reuse the committed DejaVu subset (Latin + Hebrew). Bumped to 24px for the
+# larger 480x480 panel.
+font:
+  - id: ui_font
+    file: "fonts/DejaVuSans-knob.ttf"
+    size: 24
+    bpp: 4
+    glyphsets:
+      - GF_Latin_Core
+    glyphs:
+      - "☰"
+      - "♪"
+      - "א"
+      - "ב"
+      - "ג"
+      - "ד"
+      - "ה"
+      - "ו"
+      - "ז"
+      - "ח"
+      - "ט"
+      - "י"
+      - "ך"
+      - "כ"
+      - "ל"
+      - "ם"
+      - "מ"
+      - "ן"
+      - "נ"
+      - "ס"
+      - "ע"
+      - "ף"
+      - "פ"
+      - "ץ"
+      - "צ"
+      - "ק"
+      - "ר"
+      - "ש"
+      - "ת"
+      - "־"
+      - "׳"
+      - "״"
+
+# --- UI (LVGL) ---------------------------------------------------------------
+# Same three pages as knob.yaml, geometry scaled 360 -> 480.
+lvgl:
+  displays:
+    - knob_lcd
+  touchscreens:
+    - knob_touch
+  # Full RGB framebuffer lives in PSRAM (no QSPI DMA-bounce limit), so a larger
+  # LVGL buffer is fine. Tune vs. tearing on hardware.
+  buffer_size: 25%
+  on_idle:
+    timeout: 5min
+    then:
+      - script.execute: screen_sleep
+  pages:
+    - id: wifi_setup
+      bg_color: 0x000000
+      widgets:
+        - label:
+            align: TOP_MID
+            y: 48
+            text: "Set up Wi-Fi"
+            text_color: 0xFFFFFF
+        - qrcode:
+            id: wifi_qr
+            align: CENTER
+            size: 220
+            light_color: 0xFFFFFF
+            dark_color: 0x000000
+            text: "WIFI:S:CastKnob-Setup;T:nopass;;"
+        - label:
+            align: BOTTOM_MID
+            y: -46
+            text: "Scan, or join CastKnob-Setup"
+            text_color: 0xAAAAAA
+    - id: now_playing
+      bg_color: 0x000000
+      on_swipe_right:
+        - lambda: "id(cast).request_next_device();"
+      on_swipe_left:
+        - lambda: "id(cast).request_prev_device();"
+      on_swipe_down:
+        - lambda: |-
+            lv_obj_t *r = id(spk_roller)->obj;
+            lv_roller_set_options(r, id(cast).device_list_str().c_str(), LV_ROLLER_MODE_NORMAL);
+            lv_roller_set_selected(r, id(cast).current_index(), LV_ANIM_OFF);
+            id(cast).set_list_mode(true);
+        - lvgl.page.show: speaker_list
+      widgets:
+        - image:
+            id: ui_art
+            src: art_img
+            align: CENTER
+            opa: 40%
+        - arc:
+            id: ui_vol_arc
+            align: CENTER
+            width: 460
+            height: 460
+            min_value: 0
+            max_value: 100
+            value: 0
+            adjustable: false
+            arc_color: 0x303030
+            indicator:
+              arc_color: 0x0A84FF
+        - label:
+            id: ui_device
+            align: TOP_MID
+            y: 88
+            text: "Cast Knob"
+            text_color: 0xFFFFFF
+            text_font: ui_font
+            base_dir: AUTO
+        - label:
+            id: ui_title
+            align: CENTER
+            y: -10
+            text: "ready"
+            text_color: 0xFFFFFF
+            text_align: CENTER
+            long_mode: dot
+            width: 320
+            text_font: ui_font
+            base_dir: AUTO
+        # Transport: circular buttons (LV_SYMBOL_* glyphs from Montserrat — keep
+        # off ui_font). Geometry scaled up for the 480 panel.
+        - button:
+            align: BOTTOM_MID
+            x: -112
+            y: -38
+            width: 72
+            height: 72
+            radius: 36
+            bg_color: 0x2C2C2E
+            bg_opa: COVER
+            border_width: 0
+            widgets:
+              - label: { align: CENTER, text: "", text_color: 0xFFFFFF }
+            on_press:
+              - lambda: "id(cast).request_prev();"
+        - button:
+            align: BOTTOM_MID
+            x: 0
+            y: -38
+            width: 88
+            height: 88
+            radius: 44
+            bg_color: 0x0A84FF
+            bg_opa: COVER
+            border_width: 0
+            shadow_color: 0x0A84FF
+            shadow_width: 22
+            shadow_opa: 45%
+            widgets:
+              - label: { align: CENTER, text: "", text_color: 0xFFFFFF }
+            on_press:
+              - lambda: "id(cast).request_play_pause();"
+        - button:
+            align: BOTTOM_MID
+            x: 112
+            y: -38
+            width: 72
+            height: 72
+            radius: 36
+            bg_color: 0x2C2C2E
+            bg_opa: COVER
+            border_width: 0
+            widgets:
+              - label: { align: CENTER, text: "", text_color: 0xFFFFFF }
+            on_press:
+              - lambda: "id(cast).request_next();"
+    - id: speaker_list
+      bg_color: 0x000000
+      on_swipe_up:
+        - lambda: "id(cast).set_list_mode(false);"
+        - lvgl.page.show: now_playing
+      widgets:
+        - label:
+            align: TOP_MID
+            y: 16
+            text: "SPEAKERS"
+            text_color: 0x8A8A8E
+            text_font: ui_font
+            text_letter_space: 2
+        - roller:
+            id: spk_roller
+            align: CENTER
+            y: 2
+            width: 440
+            visible_row_count: 7
+            text_font: ui_font
+            base_dir: AUTO
+            bg_opa: TRANSP
+            text_color: 0xCFCFD2
+            text_line_space: 6
+            border_width: 0
+            pad_all: 4
+            selected:
+              bg_color: 0x0A84FF
+              bg_opa: COVER
+              text_color: 0xFFFFFF
+              radius: 16
+            options:
+              - "..."
+        - button:
+            align: BOTTOM_MID
+            y: -22
+            width: 220
+            height: 60
+            radius: 30
+            bg_color: 0x0A84FF
+            shadow_color: 0x0A84FF
+            shadow_width: 22
+            shadow_opa: 50%
+            widgets:
+              - label: { align: CENTER, text: "Select", text_color: 0xFFFFFF, text_font: ui_font }
+            on_press:
+              - lambda: |-
+                  id(cast).request_select_device(lv_roller_get_selected(id(spk_roller)->obj));
+                  id(cast).set_list_mode(false);
+              - lvgl.page.show: now_playing

@@ -17,6 +17,14 @@ from esphome.components.drv2605 import DRV2605
 
 CONF_DISPLAY = "display"
 CONF_HAPTICS = "haptics"
+CONF_ENCODER = "encoder"
+
+# How the physical knob is decoded:
+#   "pcnt"     — internally, via PCNT (Waveshare board, see cast_controller.cpp).
+#   "external" — the YAML feeds detents in via on_encoder_delta() (e.g. ESPHome's
+#                stock rotary_encoder on the Elecrow board, a normal quadrature
+#                encoder PCNT-special-casing would mis-decode).
+ENCODER_MODES = ("pcnt", "external")
 
 AUTO_LOAD = ["sensor", "text_sensor"]
 
@@ -41,6 +49,9 @@ CONFIG_SCHEMA = cv.Schema(
         ),
         cv.Optional(CONF_DISPLAY): cv.use_id(SH8601),  # for the 'S' screenshot key
         cv.Optional(CONF_HAPTICS): cv.use_id(DRV2605),  # click per physical detent/press
+        cv.Optional(CONF_ENCODER, default="pcnt"): cv.one_of(
+            *ENCODER_MODES, lower=True
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -56,12 +67,20 @@ async def to_code(config):
     # board_pins.h (encoder/button GPIOs) is shared with the vanilla bsp.
     cg.add_build_flag("-I" + os.path.join(_ROOT, "components", "bsp", "include"))
 
+    # Compile-optional peripherals: only the board(s) that wire them up pull the
+    # SH8601/DRV2605/PCNT code in. The matching #ifdefs in cast_controller.{h,cpp}
+    # keep boards without them (e.g. the Elecrow RGB board) linking cleanly.
+    if config[CONF_ENCODER] == "pcnt":
+        cg.add_build_flag("-DCAST_HAVE_PCNT_ENCODER")
+
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
     if CONF_DISPLAY in config:
+        cg.add_build_flag("-DCAST_HAVE_SH8601")
         cg.add(var.set_display(await cg.get_variable(config[CONF_DISPLAY])))
     if CONF_HAPTICS in config:
+        cg.add_build_flag("-DCAST_HAVE_HAPTICS")
         cg.add(var.set_haptics(await cg.get_variable(config[CONF_HAPTICS])))
 
     if CONF_DEVICES_FOUND in config:
