@@ -1,7 +1,7 @@
 name: Release
 
-# Tag a commit `vX.Y.Z` and push it -> build ALL THREE firmwares and attach them
-# to the GitHub Release:
+# Tag a commit `vX.Y.Z` and push it -> build ALL THREE firmwares IN PARALLEL
+# (one runner each) and attach them to the GitHub Release:
 #
 #   firmware.bin                      vanilla ESP-IDF, OTA asset (components/ota
 #                                     pulls this from releases/latest by name).
@@ -12,6 +12,9 @@ name: Release
 # Each *.factory.bin can be flashed from https://web.esphome.io ("install from
 # file") onto a fresh board. The tag is written into version.txt so the vanilla
 # image version (esp_app_get_description()->version) matches the tag.
+#
+# Wall-clock = slowest single build + the publish step, instead of the sum of all
+# three. Each matrix job uploads its bins as an artifact; `publish` collects them.
 
 on:
   push:
@@ -26,8 +29,13 @@ permissions:
   contents: write   # create the release + upload assets
 
 jobs:
-  release:
+  build:
+    name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false   # one board failing shouldn't hide the others
+      matrix:
+        target: [vanilla, waveshare, elecrow]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,22 +50,50 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
-      # The espressif32 platform + Xtensa toolchain + ESP-IDF are ~GB and shared
-      # by the vanilla and both ESPHome builds; cache them across runs.
+      # Per-target ~/.platformio cache (the ~GB ESP-IDF/Xtensa toolchain). Keyed
+      # per target so the parallel jobs don't race on one cache entry.
       - name: Cache PlatformIO platforms & toolchains
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'boards/**', 'sdkconfig.defaults', 'src/idf_component.yml', 'esphome/**.yaml', 'components/cast/**') }}
+          key: pio-${{ matrix.target }}-${{ runner.os }}-${{ hashFiles('platformio.ini', 'boards/**', 'sdkconfig.defaults', 'src/idf_component.yml', 'esphome/**.yaml', 'components/cast/**') }}
           restore-keys: |
+            pio-${{ matrix.target }}-${{ runner.os }}-
             pio-${{ runner.os }}-
 
       - name: Sync toolchain (PlatformIO + esptool in the uv venv)
         run: just setup
 
-      # Builds all three and collects dist/ (stamps version.txt from the tag).
-      - name: Build all firmwares (vanilla + both ESPHome)
-        run: just dist-all "${{ inputs.tag || github.ref_name }}"
+      # vanilla also stamps version.txt from the tag; the ESPHome targets don't.
+      - name: Build ${{ matrix.target }} firmware
+        run: |
+          if [ "${{ matrix.target }}" = "vanilla" ]; then
+            just dist-vanilla "${{ inputs.tag || github.ref_name }}"
+          else
+            just dist-${{ matrix.target }}
+          fi
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fw-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all firmware artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: fw-*
+          merge-multiple: true   # flatten all artifacts into dist/
+
+      - name: List assets
+        run: ls -la dist
 
       - name: Publish release with all firmware assets
         uses: softprops/action-gh-release@v2
