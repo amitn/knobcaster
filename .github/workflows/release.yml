@@ -1,9 +1,17 @@
 name: Release
 
-# Tag a commit `vX.Y.Z` and push it -> build the firmware and attach
-# `firmware.bin` to the GitHub Release. The knob's OTA worker (components/ota)
-# pulls that asset from `releases/latest`. The tag is written into version.txt so
-# the embedded image version (esp_app_get_description()->version) matches the tag.
+# Tag a commit `vX.Y.Z` and push it -> build ALL THREE firmwares and attach them
+# to the GitHub Release:
+#
+#   firmware.bin                      vanilla ESP-IDF, OTA asset (components/ota
+#                                     pulls this from releases/latest by name).
+#   cast-knob-vanilla.factory.bin     vanilla ESP-IDF, full image (web-flashable).
+#   cast-knob-waveshare.factory.bin   ESPHome, Waveshare board (esphome/knob.yaml).
+#   cast-knob-elecrow.factory.bin     ESPHome, Elecrow board (esphome/elecrow.yaml).
+#
+# Each *.factory.bin can be flashed from https://web.esphome.io ("install from
+# file") onto a fresh board. The tag is written into version.txt so the vanilla
+# image version (esp_app_get_description()->version) matches the tag.
 
 on:
   push:
@@ -25,7 +33,7 @@ jobs:
         with:
           fetch-depth: 0   # tags, for the git-describe fallback
 
-      - name: Install uv (+ cache the venv)
+      - name: Install uv (+ cache the venv / esphome downloads)
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -34,27 +42,26 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v2
 
+      # The espressif32 platform + Xtensa toolchain + ESP-IDF are ~GB and shared
+      # by the vanilla and both ESPHome builds; cache them across runs.
       - name: Cache PlatformIO platforms & toolchains
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'boards/**', 'sdkconfig.defaults', 'src/idf_component.yml') }}
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'boards/**', 'sdkconfig.defaults', 'src/idf_component.yml', 'esphome/**.yaml', 'components/cast/**') }}
           restore-keys: |
             pio-${{ runner.os }}-
 
-      # Embed the release tag as the firmware version (ESP-IDF reads version.txt).
-      - name: Stamp firmware version
-        run: echo "${{ inputs.tag || github.ref_name }}" > version.txt
-
-      - name: Sync toolchain (PlatformIO in the uv venv)
+      - name: Sync toolchain (PlatformIO + esptool in the uv venv)
         run: just setup
 
-      - name: Build firmware
-        run: just build
+      # Builds all three and collects dist/ (stamps version.txt from the tag).
+      - name: Build all firmwares (vanilla + both ESPHome)
+        run: just dist-all "${{ inputs.tag || github.ref_name }}"
 
-      - name: Publish release with firmware.bin
+      - name: Publish release with all firmware assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          files: .pio/build/knob/firmware.bin
+          files: dist/*
           generate_release_notes: true

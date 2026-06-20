@@ -3,6 +3,9 @@
 *.bin
 *.elf
 
+# Release assets collected by `just dist-all` (built, not committed)
+dist/
+
 # ESP-IDF generated (keep sdkconfig.defaults; ignore the rest)
 sdkconfig
 sdkconfig.knob

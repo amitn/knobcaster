@@ -112,6 +112,27 @@ web-flash-local port="8000": build
 release level="patch" *flags="":
     uv run python scripts/release.py {{level}} {{flags}}
 
+# Build ALL THREE firmwares and collect web-flashable FACTORY images into dist/
+# (plus the vanilla OTA firmware.bin). These are the assets the Release workflow
+# attaches to a GitHub Release; each *.factory.bin can be flashed from
+# https://web.esphome.io ("install from file"). Run locally to reproduce them.
+# `version` stamps the vanilla image (version.txt -> esp_app_get_description()).
+dist-all version="dev":
+    echo "{{version}}" > version.txt
+    rm -rf dist && mkdir -p dist
+    @echo "==> [1/3] vanilla ESP-IDF (knob)"
+    just build
+    cp .pio/build/knob/firmware.bin dist/firmware.bin
+    uv run esptool --chip esp32s3 merge-bin -o dist/cast-knob-vanilla.factory.bin --flash-mode dio --flash-freq 80m --flash-size 16MB 0x0 .pio/build/knob/bootloader.bin 0x8000 .pio/build/knob/partitions.bin 0xe000 .pio/build/knob/ota_data_initial.bin 0x10000 .pio/build/knob/firmware.bin
+    @echo "==> [2/3] ESPHome Waveshare (cast-knob)"
+    just esphome-build
+    cp esphome/.esphome/build/cast-knob/.pioenvs/cast-knob/firmware.factory.bin dist/cast-knob-waveshare.factory.bin
+    @echo "==> [3/3] ESPHome Elecrow (cast-knob-elecrow)"
+    just esphome-elecrow-build
+    cp esphome/.esphome/build/cast-knob-elecrow/.pioenvs/cast-knob-elecrow/firmware.factory.bin dist/cast-knob-elecrow.factory.bin
+    @echo "==> dist/ (release assets):"
+    ls -la dist
+
 # --- ESPHome port (branch esphome-port) -------------------------------------
 
 # Validate the ESPHome YAML (fast; no toolchain download).
